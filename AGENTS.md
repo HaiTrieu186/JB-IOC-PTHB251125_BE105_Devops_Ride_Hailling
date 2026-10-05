@@ -36,3 +36,28 @@ Không đề xuất Kafka, Elasticsearch, Java.
 - Hoàn thành chuyến → trừ ví khách, cộng ví tài xế
 - ai-service: thống kê chuyến, doanh thu, giờ cao điểm, tỷ lệ hủy
 Các phần phụ: làm cực đơn giản hoặc bỏ.
+
+## Luật bắt buộc
+
+### Luật: Quy ước code
+- Go + Fiber + GORM.
+- Mỗi service: Dockerfile riêng (multi-stage), cấu hình qua biến môi trường,
+  endpoint GET /health.
+- Response JSON thống nhất: {"success":bool,"data":...,"error":{"code","message"}}.
+- Tên service/thư mục: kebab-case. Comment ngắn, tiếng Việt hoặc Anh đều được.
+
+### Luật: Doc trước, code sau
+- Không viết code khi chưa có SRS/LLD của service đó được người dùng duyệt.
+- Thiếu doc thì dừng lại và hỏi.
+- Sau khi viết xong một tài liệu, dừng và chờ người dùng duyệt.
+
+### Luật: Ràng buộc VPS
+- VPS 1 GB RAM, 20 GB disk, Ubuntu.
+- Không đề xuất Kafka, Elasticsearch/EFK, Java. Ưu tiên giải pháp nhẹ.
+- Mọi container phải có mem_limit.
+- Chỉ Nginx được publish cổng ra ngoài; còn lại dùng mạng nội bộ Docker.
+- Monitoring (Prometheus, node_exporter) tách profile riêng để tắt được.
+
+## Lệnh có sẵn (trong .agents/skills/)
+- /write-spec  : viết tài liệu theo phần được yêu cầu
+- /implement-service : code 1 service từ LLD đã duyệt
