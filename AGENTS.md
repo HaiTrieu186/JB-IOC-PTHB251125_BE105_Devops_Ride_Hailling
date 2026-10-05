@@ -61,3 +61,11 @@ Các phần phụ: làm cực đơn giản hoặc bỏ.
 ## Lệnh có sẵn (trong .agents/skills/)
 - /write-spec  : viết tài liệu theo phần được yêu cầu
 - /implement-service : code 1 service từ LLD đã duyệt
+
+## Skill nên dùng theo giai đoạn (.agents/skills/)
+- Viết tài liệu: brainstorming, spec-writer, architecture, microservices-patterns, database-design, api-design-principles, openapi-spec-generation, diagram-generator
+- Viết code Go: golang-pro, go-concurrency-patterns, auth-implementation-patterns, postgresql, redis
+- Test API: postman-collection-generator, api-documentation
+- Deploy/CI: docker-expert, docker-compose, github-actions-templates, github-actions-debugger, deployment-procedures, linux-administration, prometheus-configuration
+- Kiểm tra/sửa lỗi: verification-before-completion, systematic-debugging
+Chỉ đọc skill khi giai đoạn hiện tại cần, không nạp hết cùng lúc.
