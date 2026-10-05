@@ -1,0 +1,38 @@
+# Dự án: Ride-Hailing & Logistics (đồ án môn DevOps)
+
+## Mục tiêu
+Deploy hệ thống microservices lên VPS thật. Backend chỉ cần chạy được luồng
+nghiệp vụ chính để demo test API (curl/Postman). KHÔNG làm UI.
+Đề gốc: docs/00-brainstorm/de-bai-goc.md
+
+## Kiến trúc (BẮT BUỘC giữ đúng)
+Internet → Nginx (container, DUY NHẤT mở cổng 80/443)
+  → api-gateway → user / location / dispatch / pricing / payment / ai-service
+  → ws-gateway (qua đường /ws/ của Nginx)
+Postgres, Redis: chạy container, KHÔNG mở cổng ra ngoài.
+
+## Tech stack
+- Go + Fiber + GORM
+- Redis (Pub/Sub + Streams) thay Kafka
+- PostgreSQL (PostGIS nếu cần), mỗi service 1 schema
+- Docker Compose
+- CI/CD: GitHub Actions, mỗi service 1 file ci-<tên>.yml, push lên GHCR
+- Domain: DuckDNS + certbot
+
+## Ràng buộc VPS
+1 GB RAM, 20 GB disk → mỗi container có mem_limit, bật swap 2 GB.
+Không đề xuất Kafka, Elasticsearch, Java.
+
+## Quy trình làm việc
+1. Doc trước, code sau: SRS → use case → LLD → code.
+2. Chỉ làm đúng việc được yêu cầu ở lượt hiện tại.
+3. CHƯA được tự ý viết code, docker-compose, CI khi người dùng chưa yêu cầu.
+4. Người dùng là sinh viên cần HIỂU luồng nghiệp vụ: giải thích ngắn gọn, tiếng Việt.
+
+## Phạm vi MVP (luồng chính)
+- Đăng ký / đăng nhập (JWT)
+- Tài xế ONLINE, gửi GPS qua WebSocket
+- Khách đặt xe → báo giá → ghép tài xế gần nhất → tài xế nhận → state machine chuyến
+- Hoàn thành chuyến → trừ ví khách, cộng ví tài xế
+- ai-service: thống kê chuyến, doanh thu, giờ cao điểm, tỷ lệ hủy
+Các phần phụ: làm cực đơn giản hoặc bỏ.
