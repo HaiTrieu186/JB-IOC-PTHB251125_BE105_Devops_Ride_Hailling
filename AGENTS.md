@@ -7,59 +7,87 @@ nghiệp vụ chính để demo test API (curl/Postman). KHÔNG làm UI.
 
 ## Kiến trúc (BẮT BUỘC giữ đúng)
 Internet → Nginx (container, DUY NHẤT mở cổng 80/443)
-  → api-gateway → user / location / dispatch / pricing / payment / ai-service
-  → ws-gateway (qua đường /ws/ của Nginx)
-Postgres, Redis: chạy container, KHÔNG mở cổng ra ngoài.
+  → /api/ → api-gateway → user / location / dispatch / pricing / payment / ai-service
+  → /ws/  → ws-gateway (giữ kết nối WebSocket với tài xế và khách)
+Postgres, Redis, mọi service: mạng nội bộ Docker, KHÔNG publish cổng ra ngoài.
+- api-gateway: kiểm tra JWT, gắn header X-User-Id / X-User-Role rồi chuyển request.
+  Các service nội bộ tin header này (mặc định, có thể đổi trong SRS).
+- ws-gateway: nhận GPS tài xế, đẩy thông báo (chuyến mới, vị trí xe) xuống client.
+- HTTPS: certbot chạy trên VPS (domain DuckDNS), mount chứng chỉ vào container Nginx.
 
 ## Tech stack
 - Go + Fiber + GORM
-- Redis (Pub/Sub + Streams) thay Kafka
-- PostgreSQL (PostGIS nếu cần), mỗi service 1 schema
-- Docker Compose
+- Redis: Pub/Sub (đẩy tin realtime giữa các instance ws-gateway) + Streams (sự kiện giữa service). Thay Kafka.
+- PostgreSQL: DATABASE-PER-SERVICE. Dùng 1 container Postgres (tiết kiệm RAM), bên trong mỗi service
+  có 1 database + 1 user/mật khẩu riêng. Service KHÔNG được truy cập database của service khác;
+  cần dữ liệu thì gọi API hoặc nhận sự kiện Redis. KHÔNG dùng chung schema/bảng giữa các service.
+- Docker Compose (1 file, tách profile cho monitoring)
 - CI/CD: GitHub Actions, mỗi service 1 file ci-<tên>.yml, push lên GHCR
 - Domain: DuckDNS + certbot
 
+## Dữ liệu theo service
+| Service | Lưu trữ |
+|---|---|
+| api-gateway, ws-gateway | Không có DB (Redis nếu cần) |
+| user-service | Postgres: userdb (tài khoản, hồ sơ tài xế, trạng thái ONLINE/OFFLINE/BUSY) |
+| location-service | Redis GEO (vị trí mới nhất); Postgres: locationdb chỉ khi cần lưu lịch sử |
+| dispatch-service | Postgres: dispatchdb (chuyến đi, lịch sử trạng thái) |
+| pricing-service | Postgres: pricingdb (bảng giá) + cache Redis |
+| payment-service | Postgres: paymentdb (ví, giao dịch) |
+| ai-service | Postgres: aidb (số liệu tổng hợp, tự thu qua sự kiện Redis hoặc API) |
+
+## Luồng nghiệp vụ cốt lõi (dùng làm khung cho SRS/LLD)
+1. Đăng ký / đăng nhập → JWT.
+2. Tài xế bật ONLINE, gửi GPS mỗi 3-5 giây qua WebSocket → location-service cập nhật Redis GEO.
+3. Khách đặt xe → pricing báo giá (khoảng cách × đơn giá × hệ số surge đơn giản)
+   → dispatch tìm tài xế rảnh gần nhất (bán kính X km) → gửi đề nghị cho tài xế.
+4. Chống 2 khách giành 1 tài xế: khóa nguyên tử bằng Redis (SET NX có TTL).
+5. State machine chuyến: CREATED → MATCHING → ACCEPTED → PICKING_UP → IN_TRIP → COMPLETED
+   (nhánh CANCELLED, và MATCHING hết giờ thì thất bại). Chỉ cho phép chuyển trạng thái hợp lệ.
+6. COMPLETED → dispatch phát sự kiện TripCompleted (Redis Stream) →
+   payment trừ ví khách + cộng ví tài xế (trừ hoa hồng); user cập nhật lịch sử; ai-service ghi số liệu.
+7. ai-service: thống kê số chuyến, doanh thu, giờ cao điểm, tỷ lệ hủy; sinh nhận xét bằng LLM.
+   Không có API key thì vẫn chạy bằng luật đơn giản.
+Surge: Demand = số yêu cầu đặt xe, Supply = số tài xế rảnh, tính theo khu vực/ô lưới (làm cực đơn giản).
+Phần phụ (hồ sơ chi tiết, khuyến mãi, thẻ ngân hàng thật): bỏ hoặc làm tối giản.
+
+## Tiêu chí demo (từ đề của thầy)
+- Vị trí tài xế cập nhật qua WebSocket với độ trễ < 500 ms.
+- Ghép đúng tài xế rảnh và gần nhất.
+- Chạy trên VPS thật, kiểm tra được HTTPS/WSS từ mạng ngoài.
+- Có script giả lập 100 tài xế ảo gửi GPS; đặt xe thật và tài xế ảo nhận được chuyến.
+
 ## Ràng buộc VPS
-1 GB RAM, 20 GB disk → mỗi container có mem_limit, bật swap 2 GB.
-Không đề xuất Kafka, Elasticsearch, Java.
+1 GB RAM, 20 GB disk, Ubuntu → mỗi container có mem_limit, bật swap 2 GB, dọn image cũ định kỳ.
+- Không dùng Kafka, Elasticsearch/EFK, Java. EFK bị loại vì Elasticsearch cần ≥ 2 GB RAM;
+  thay bằng log Docker + Dozzle (xem log trực tiếp). Nếu nâng VPS lên ≥ 4 GB thì có thể thêm EFK.
+- Monitoring: Prometheus + node_exporter + cAdvisor, tách profile riêng để tắt khi không demo.
+- Dozzle/Prometheus cũng không publish cổng công khai: truy cập qua SSH tunnel hoặc Nginx có basic auth.
 
 ## Quy trình làm việc
 1. Doc trước, code sau: SRS → use case → LLD → code.
 2. Chỉ làm đúng việc được yêu cầu ở lượt hiện tại.
 3. CHƯA được tự ý viết code, docker-compose, CI khi người dùng chưa yêu cầu.
-4. Người dùng là sinh viên cần HIỂU luồng nghiệp vụ: giải thích ngắn gọn, tiếng Việt.
+4. Không tự thêm công nghệ ngoài danh sách ở "Tech stack"; muốn thêm thì hỏi trước.
+5. Người dùng là sinh viên cần HIỂU luồng nghiệp vụ: giải thích ngắn gọn, tiếng Việt.
 
-## Phạm vi MVP (luồng chính)
-- Đăng ký / đăng nhập (JWT)
-- Tài xế ONLINE, gửi GPS qua WebSocket
-- Khách đặt xe → báo giá → ghép tài xế gần nhất → tài xế nhận → state machine chuyến
-- Hoàn thành chuyến → trừ ví khách, cộng ví tài xế
-- ai-service: thống kê chuyến, doanh thu, giờ cao điểm, tỷ lệ hủy
-Các phần phụ: làm cực đơn giản hoặc bỏ.
+## Quy ước tài liệu
+- Viết tiếng Việt, ngắn gọn, dễ hiểu. Sơ đồ dùng Mermaid.
+- File đặt trong docs/ đúng thư mục: 01-srs, 02-use-cases, 03-lld, 04-api-test, 05-deploy.
+- SRS: mỗi chức năng có mã (FR-01, FR-02...) và mức ưu tiên (bắt buộc / nên có / bỏ qua).
+- LLD mỗi service: 1 file docs/03-lld/<tên-service>.md, gồm bảng DB của CHÍNH service đó,
+  API, luồng xử lý, ngoại lệ, sự kiện Redis phát/nhận.
+- Test API: curl chạy được, sắp theo thứ tự kịch bản demo end-to-end.
+- Xong mỗi tài liệu: tóm tắt ngắn rồi DỪNG, chờ duyệt.
 
-## Luật bắt buộc
-
-### Luật: Quy ước code
+## Quy ước code (khi tới giai đoạn code)
 - Go + Fiber + GORM.
-- Mỗi service: Dockerfile riêng (multi-stage), cấu hình qua biến môi trường,
-  endpoint GET /health.
+- Mỗi service: Dockerfile riêng (multi-stage), cấu hình qua biến môi trường, endpoint GET /health.
 - Response JSON thống nhất: {"success":bool,"data":...,"error":{"code","message"}}.
-- Tên service/thư mục: kebab-case. Comment ngắn, tiếng Việt hoặc Anh đều được.
-
-### Luật: Doc trước, code sau
-- Không viết code khi chưa có SRS/LLD của service đó được người dùng duyệt.
-- Thiếu doc thì dừng lại và hỏi.
-- Sau khi viết xong một tài liệu, dừng và chờ người dùng duyệt.
-
-### Luật: Ràng buộc VPS
-- VPS 1 GB RAM, 20 GB disk, Ubuntu.
-- Không đề xuất Kafka, Elasticsearch/EFK, Java. Ưu tiên giải pháp nhẹ.
-- Mọi container phải có mem_limit.
-- Chỉ Nginx được publish cổng ra ngoài; còn lại dùng mạng nội bộ Docker.
-- Monitoring (Prometheus, node_exporter) tách profile riêng để tắt được.
+- Tên service/thư mục: kebab-case. Không commit file .env hay mật khẩu thật.
 
 ## Lệnh có sẵn (trong .agents/skills/)
-- /write-spec  : viết tài liệu theo phần được yêu cầu
+- /write-spec : viết tài liệu theo phần được yêu cầu
 - /implement-service : code 1 service từ LLD đã duyệt
 
 ## Skill nên dùng theo giai đoạn (.agents/skills/)
