@@ -6,14 +6,19 @@ nghiệp vụ chính để demo test API (curl/Postman). KHÔNG làm UI.
 Đề gốc: docs/00-brainstorm/de-bai-goc.md
 
 ## Kiến trúc (BẮT BUỘC giữ đúng)
-Internet → Nginx (container, DUY NHẤT mở cổng 80/443)
-  → /api/ → api-gateway → user / location / dispatch / pricing / payment / ai-service
-  → /ws/  → ws-gateway (giữ kết nối WebSocket với tài xế và khách)
-Postgres, Redis, mọi service: mạng nội bộ Docker, KHÔNG publish cổng ra ngoài.
+Internet → Nginx (cài trực tiếp trên VPS, DUY NHẤT nhận kết nối từ Internet, cổng 80/443)
+→ /    → api-gateway (127.0.0.1:8080) → user / location / dispatch / pricing / payment / ai-service
+→ /ws/ → ws-gateway  (127.0.0.1:8081, có Upgrade header cho WebSocket)
+Postgres, Redis, các service còn lại: chỉ trong mạng Docker, KHÔNG publish cổng.
+Hai gateway publish dạng 127.0.0.1:PORT (không dùng 0.0.0.0, vì Docker có thể bỏ qua UFW).
+- Nginx ĐÃ cài sẵn trên VPS cùng certbot + UFW (OpenSSH, Nginx Full) và domain DuckDNS đã có chứng chỉ.
+  KHÔNG đưa Nginx vào docker-compose. Sửa file cấu hình có sẵn (thêm location /ws/), không tạo lại từ đầu.
 - api-gateway: kiểm tra JWT, gắn header X-User-Id / X-User-Role rồi chuyển request.
   Các service nội bộ tin header này (mặc định, có thể đổi trong SRS).
-- ws-gateway: nhận GPS tài xế, đẩy thông báo (chuyến mới, vị trí xe) xuống client.
-- HTTPS: certbot chạy trên VPS (domain DuckDNS), mount chứng chỉ vào container Nginx.
+- ws-gateway: CHỈ để nhận GPS tài xế và đẩy thông báo xuống client. Hành động nghiệp vụ
+  (đặt xe, accept, complete...) đi qua REST qua api-gateway để dễ test bằng curl/Postman.
+- Giao tiếp đồng bộ: REST (client Go tự viết, gọi bằng tên service trong Docker). Bất đồng bộ: Redis Streams
+  (sự kiện giữa service, consumer group + ACK) và Redis Pub/Sub (đẩy tin realtime tới ws-gateway).
 
 ## Tech stack
 - Go + Fiber + GORM
@@ -48,8 +53,8 @@ Postgres, Redis, mọi service: mạng nội bộ Docker, KHÔNG publish cổng 
    payment trừ ví khách + cộng ví tài xế (trừ hoa hồng); user cập nhật lịch sử; ai-service ghi số liệu.
 7. ai-service: thống kê số chuyến, doanh thu, giờ cao điểm, tỷ lệ hủy; sinh nhận xét bằng LLM.
    Không có API key thì vẫn chạy bằng luật đơn giản.
-Surge: Demand = số yêu cầu đặt xe, Supply = số tài xế rảnh, tính theo khu vực/ô lưới (làm cực đơn giản).
-Phần phụ (hồ sơ chi tiết, khuyến mãi, thẻ ngân hàng thật): bỏ hoặc làm tối giản.
+   Surge: Demand = số yêu cầu đặt xe, Supply = số tài xế rảnh, tính theo khu vực/ô lưới (làm cực đơn giản).
+   Phần phụ (hồ sơ chi tiết, khuyến mãi, thẻ ngân hàng thật): bỏ hoặc làm tối giản.
 
 ## Tiêu chí demo (từ đề của thầy)
 - Vị trí tài xế cập nhật qua WebSocket với độ trễ < 500 ms.
@@ -62,7 +67,7 @@ Phần phụ (hồ sơ chi tiết, khuyến mãi, thẻ ngân hàng thật): b�
 - Không dùng Kafka, Elasticsearch/EFK, Java. EFK bị loại vì Elasticsearch cần ≥ 2 GB RAM;
   thay bằng log Docker + Dozzle (xem log trực tiếp). Nếu nâng VPS lên ≥ 4 GB thì có thể thêm EFK.
 - Monitoring: Prometheus + node_exporter + cAdvisor, tách profile riêng để tắt khi không demo.
-- Dozzle/Prometheus cũng không publish cổng công khai: truy cập qua SSH tunnel hoặc Nginx có basic auth.
+- Dozzle/Prometheus chỉ bind 127.0.0.1, truy cập qua SSH tunnel hoặc Nginx có basic auth.
 
 ## Quy trình làm việc
 1. Doc trước, code sau: SRS → use case → LLD → code.
@@ -96,4 +101,8 @@ Phần phụ (hồ sơ chi tiết, khuyến mãi, thẻ ngân hàng thật): b�
 - Test API: postman-collection-generator, api-documentation
 - Deploy/CI: docker-expert, docker-compose, github-actions-templates, github-actions-debugger, deployment-procedures, linux-administration, prometheus-configuration
 - Kiểm tra/sửa lỗi: verification-before-completion, systematic-debugging
-Chỉ đọc skill khi giai đoạn hiện tại cần, không nạp hết cùng lúc.
+  Chỉ đọc skill khi giai đoạn hiện tại cần, không nạp hết cùng lúc.
+## Việc chưa chốt (hỏi người dùng khi viết SRS, đừng tự quyết)
+- Ví khách không đủ tiền thì xử lý thế nào (chặn lúc đặt xe, hay cho âm).
+- Ghép chuyến: gửi đề nghị lần lượt từng tài xế gần nhất (đề xuất: 15 giây mỗi người, tối đa 3 lần) hay gửi nhiều người cùng lúc.
+- Tỷ lệ hoa hồng (đề xuất 15%, đặt trong cấu hình) và có phạt khi hủy hay không (đề xuất: bỏ).

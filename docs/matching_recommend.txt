@@ -1,0 +1,334 @@
+﻿MỘT SỐ CÔNG NGHỆ VÀ MODEL AI PHÙ HỢP CHO OPTIGO
+1. Route Matching (Khớp Nối Tuyến Đường) 
+* Mục tiêu: hệ thống sẽ xác định xem lộ trình của một tài xế (đã có kế hoạch di chuyển từ A đến B) có phù hợp để đón một hành khách hoặc kiện hàng (muốn đi từ C đến D) hay không, với ràng buộc quan trọng là quãng đường đi thêm (detour) không vượt quá một ngưỡng chấp nhận được
+
+
+   1. Công nghệ Định vị & Chia nhỏ bản đồ (Spatial Indexing)
+* Trước khi thực hiện các phép toán định tuyến phức tạp, cần một cơ chế để lọc nhanh trên bản đồ. Việc sử dụng tọa độ thô không hiệu quả khi quy mô dữ liệu lớn. Giải pháp là sử sử dụng các Hệ thống Chỉ mục Không gian (Spatial Indexing) để hash tọa độ địa lý thành các đơn vị ô lưới có định danh duy nhất DGGS. Có 3 cách phổ biến nhất:
+* Geohash (Lưới hình vuông): Dễ triển khai, hỗ trợ tốt trong các hệ quản trị cơ sở dữ liệu truyền thống. Tuy nhiên, nó gặp nhược điểm lớn là khoảng cách từ tâm đến các ô lân cận không đồng đều (ô ở góc xa hơn ô ở cạnh), gây sai số khi tính toán bán kính đón khách hoặc lộ trình đi thêm (detour).
+* Google S2 (Lưới hình vuông cải tiến): Được Google phát triển để khắc phục sự biến dạng của Geohash trên bề mặt cầu. S2 rất mạnh trong việc lưu trữ và bao phủ vùng dữ liệu lớn, nhưng vẫn giữ cấu trúc hình vuông nên vẫn tồn tại sai số về khoảng cách giữa các ô kề cạnh và ô chéo góc.
+* Uber H3 (Lưới hình lục giác): Khắc phục hoàn toàn yếu điểm của dạng lưới hình vuông. Do hình lục giác có khoảng cách từ tâm đến tất cả 6 ô xung quanh là như nhau, H3 giúp việc tính toán độ lệch tuyến đường chính xác và mượt mà hơn.  
+Sự khác biệt giữa 2 cách biểu diễn (Geohash và H3).
+
+
+→ Kết luận: Với đặc thù "ghép chuyến dọc đường" cần tính toán khoảng cách kề cận liên tục, phương pháp Uber H3 là lựa chọn tối ưu nhất để tăng tỷ lệ kết hợp chuyến (match rate) và giảm độ trễ hệ thống
+- Khuyến Nghị Triển Khai H3:
+   * Độ Phân Giải Động (Dynamic Resolution): Không nên cố định Resolution.
+   * Khu vực đô thị (VD: TP.HCM/Vũng Tàu): Sử dụng Resolution 9 (cạnh ~174m) để đảm bảo độ chính xác cao khi đón trả khách.
+   * Khu vực cao tốc/Quốc lộ: Sử dụng Resolution 7 (cạnh ~1.2km) để giảm tải tính toán khi xe đang di chuyển tốc độ cao..  
+   * Polyfill Thay Vì Bán Kính Đơn: Thay vì chỉ tìm kiếm xung quanh điểm đón, hệ thống cần dự đoán hành trình. Sử dụng hàm h3.polyfill để chuyển đổi toàn bộ LineString (lộ trình dự kiến của khách) thành một tập hợp các ô H3. Sau đó truy vấn tài xế nằm trong bất kỳ ô nào thuộc tập hợp này. Điều này cho phép tìm tài xế đang ở xa nhưng đang di chuyển về phía điểm đón.  
+   * Cách triển khai Uber H3:
+- Cách dùng: sử dụng thư viện H3 để đưa vị trí chính xác của tài xế và hành khách vào các ô lục giác. Khi một yêu cầu mới xuất hiện, hệ thống chỉ cần truy vấn các tài đang ở trong cùng ô H3 hoặc các ô lân cận (k=1, k=2) thay vì tính toán khoảng cách với toàn bộ đội xe.
+Mô phòng cách h3 hoạt động, chia bản đồ thành các ô lục giác.    
+- Github:  
+   * Thư viện gốc C/C++: h3
+   * Thư viện đã triển khai cho Python: h3-py 
+   * Thư viện ngôn ngữ khác: Java / Javascript
+- Tài liệu tham khảo:
+   * Trang chủ (thư viện gốc): https://h3geo.org/
+   * Trang docs cho h3 (thư viện gốc): https://h3geo.org/docs/
+   * Trang docs cho h3-py: https://uber.github.io/h3-py/intro.html
+   * Trang web giới thiệu: https://www.uber.com/en-VN/blog/h3/
+- Video hướng dẫn:
+   * Tutorial: How to use H3 Hexagon Grids for Spatial Analysis and Mapping in Python
+   * Lý thuyết:  Playlist
+
+
+   * Dự phòng (Cho 2 thư viện GeoHash và S2):
+
+
+- Geohash:
+   * Trang web: Đã dead, hiện tại chỉ còn wiki 
+   * Github (Python):  python-geohash (Nhanh hơn, khuyên dùng) / pygeohash
+   * Github (Javascript): latlon-geohash
+   * Web giả lập cách geohash hoạt động: https://geohash.softeng.co/
+   * Web test thủ công geohash: https://www.geohash.es/
+- Google S2 (Thư viện cải tiến từ Geohash của Google):
+   * Website chính thức: https://s2geometry.io/
+   * Docs: https://s2geometry.io/devguide/
+   * Github (Thư viện gốc C++): https://github.com/google/s2geometry
+   * Github (Java): https://github.com/google/s2-geometry-library-java
+   * Github (JS): https://github.com/radarlabs/s2(Typescript), https://github.com/rahatool/s2-geometry
+
+
+
+
+   2. Bộ lọc Sơ cấp (Geo Heuristics)
+- Từ danh sách  thô tài xế mà H3 trả về, Trước khi định tuyến bằng cách gọi  gọi Routing Engine tốn kém, hệ thống cần lọc nhanh các tài xế không phù hợp về mặt hình học trước khi. Đây được gọi là giai đoạn "Sàng Lọc Hình Học" gồm nhiều lớp lọc. Gồm các thao tác sau:
+
+
+   * Lớp 1: H3 Index (Khuyến nghị dùng Redis)
+   * Hệ thống lấy ngay danh sách tài xế đang ở trong ô H3 của khách và các ô lân cận (k-ring k=1 hoặc k=2).
+→ Đây là bước O(1), chỉ mất vài mili giây.
+
+
+   * Lớp 2: Directional Filter (Lọc hướng)
+- Vấn đề: Trên tuyến đường dài như TP.HCM - Vũng Tàu, rất dễ ghép nhầm một xe đang chạy ngược chiều (từ Vũng Tàu về TP.HCM) với khách muốn đi chiều ngược lại.  (vì nếu chỉ xét Bounding Box thì  không thể biết có ngược đường không → nếu ngược đường, Detour sẽ rất lớn mà chi phí tính toán lại tốn kém → Loại sớm các trường hợp này). 
+→ Giải pháp: tính góc phương vị (Bearing) của vector di chuyển tài xế và vector hành trình của khách.
+- Tính Bearing: Xét 2 hướng chính:
+   * Hướng di chuyển hiện tại của tài xế: Current (Nơi hiện tại tài xế) → Đích (ban đầu)
+   * Hướng đi đón khách:  Current (Nơi hiện tại tài xế) → Điểm đón (của khách)
+→ Nếu bearing_driver (hướng xe chạy) và bearing_to_pickup (hướng cần đến đón) gần nhau (lệch < 90°): Xe đang cùng chiều → giữ lại.
+→ Nếu lệch > 90° (hoặc tùy ngưỡng quy định): Xe đang ngược chiều hoặc lệch lớn → loại ngay (tránh gọi Route Engine tốn kém).
+  
+
+   * Lớp 3: Hộp Giới hạn (Bounding Box)
+- R-tree: là một cấu trúc dữ liệu (index) chuyên dùng để truy vấn nhanh các đối tượng không gian (như điểm, hộp, đa giác). Cần dùng R-tree vì nếu có N tài xế, mỗi người có 1 Bounding Box → nếu duyệt vòng lặp kiểm tra giao cắt với hộp của khách → chậm (O(N)) → R-tree biến việc tìm thành O(log N)
+   * Khi tài xế đăng lộ trình → tính Bounding Box → chèn vào R-tree.
+   * Khi khách book → tạo Bounding Box → query R-tree → lấy danh sách tài xế có giao cắt.
+   * Thư viện: rtree (Python wrapper libspatialindex).
+- Bounding Box: nói đơn giản là tạo một hình chữ nhật bao quanh lộ trình tài xế và điểm đón/trả của khách hàng (tùy mục đích). Một Bounding Box được xác định chỉ bởi 4 giá trị đơn giản (dựa trên tọa độ địa lý) ,   
+  
+
+* Cách tạo Bounding box:
+   * Với Tài xế (Driver): Tạo 1 Bounding Box duy nhất bao trùm toàn bộ lộ trình (LineString) từ điểm xuất phát đến đích. Đây là "Vùng hoạt động" của tài xế.
+   * Với Khách hàng (Passenger): Tạo 1 Bounding Box nhỏ xung quanh Điểm Đón (Pickup Point) với bán kính chấp nhận được (ví dụ: R = 1km). (Không tạo Box bao trùm cả lộ trình của khách ở bước này để tránh sai số, ví dụ xe và khách đi 2 đường chéo nhau nhưng 2 box vẫn cắt nhau)
+- Logic so khớp (Match logic): hệ thống truy vấn R-Tree để tìm các Tài xế có Bounding Box lộ trình GIAO CẮT với Bounding Box điểm đón của khách. Điều kiện tiên quyết là "Vùng hoạt động" của tài xế phải bao phủ lấy vị trí khách đang đứng. Nếu 2 hình chữ nhật này không chạm nhau, tài xế chắc chắn ở quá xa, hệ thống loại ngay lập tức.
+→ Loại bỏ được khoảng 60-70% số lượng tài xế không phù hợp chỉ trong vài mili giây.  
+  
+
+- Công nghệ: Thư viện Shapely (Python).
+- Thuật toán: Intersection Check (Kiểm tra giao cắt).
+   * Hộp Tài xế (D): [Dmin_x, Dmin_y, Dmax_x, Dmax_y] (Bao trùm lộ trình dài).
+   * Hộp Khách hàng (P): [Pmin_x, Pmin_y, Pmax_x, Pmax_y] (Bao điểm đón với bán kính R).
+   * Output: True nếu A cắt B, ngược lại False.
+
+
+- Cơ chế kiểm tra giao cắt (Intersection Test): Hai hộp chữ nhật được coi là giao nhau khi và chỉ khi chúng chồng lấn lên nhau trên cả trục X (Kinh độ) và trục Y (Vĩ độ).
+   * min_x, max_x: Tọa độ Kinh độ nhỏ nhất (Cạnh Trái) và lớn nhất (Cạnh Phải) của hộp.  
+   * min_y, max_y: Tọa độ Vĩ độ nhỏ nhất (Cạnh Dưới) và lớn nhất (Cạnh Trên) của hộp.
+- Độ phức tạp O(1) vì chỉ toàn phép so sánh lớn hơn/nhỏ hơn, không có phép tính phức tạp nào.)
+      * Lớp 4: Bộ lọc Hành lang tuyến (Route Corridor Filter):  
+- Sau bước lọc bằng Bounding Box (Hộp giới hạn), danh sách tài xế vẫn còn lẫn những người “Gần nhà nhưng xa ngõ” (Do có trường hợp có thể nằm trong "Hộp chữ nhật" nhưng thực tế lại nằm rất xa con đường). 
+- Giải pháp: Hệ thống sẽ phải tạo ra một Vùng đệm (Buffer) bám sát theo hình dáng thực tế của con đường để kiểm tra chính xác.
+- Công nghệ: Shapely (.buffer() và .contains()).
+         * Tạo Buffer: Dùng hàm .buffer(Vd: radius=500m) để "thổi phồng" lộ trình (LineString) của tài xế thành một cái "ống" (Polygon) uốn lượn theo con đường 
+         * Sử dụng Kỹ thuật "Prepared Geometry": Việc kiểm tra một điểm có thuộc một đa giác phức tạp (hàng nghìn điểm uốn lượn) rất tốn CPU. Hàm shapely.prepared.prep() giúp máy tính thuộc lòng và đánh index cấu trúc hình học của cái ống vào bộ nhớ đệm (RAM) một lần duy nhất.
+         * Kiểm tra: Dùng hàm .contains() (đã qua prepared) để xác nhận Điểm Đón (Pickup) của khách có nằm lọt trong "ống" hành trình của tài xế hay không.
+
+
+* Thư viện Shapely
+- Tài liệu tham khảo:
+         * Trang chủ: https://shapely.readthedocs.io/en/stable/
+         * User Manual: https://shapely.readthedocs.io/en/latest/manual.html
+         * Docs (Python): https://pypi.org/project/shapely/
+         * Hướng dẫn: https://geobgu.xyz/py-2022/shapely.html
+         * Hướng dẫn prepare: https://shapely.readthedocs.io/en/2.1.2/reference/shapely.prepare.html
+- Github:
+         * Thư viện gốc: https://github.com/shapely/shapely
+- Video hướng dẫn:
+         * Lecture 56: Buffering and Overlay Analysis in GIS
+         * 10 Minute Tutorial - Find Similar Lines
+         * Python shapely tutorial part 1
+
+
+
+
+
+
+
+
+
+
+
+
+         * Tính khoảng cách chim bay - Ước lượng chi phí sơ bộ (Haversine formula )
+-  Mục đích: Sau khi đã lọc các tài xế ngược lộ trình hay quá xa lộ trình, sử dụng công thức Haversine để tính toán độ tiện đường dựa vào hàm ước lượng Heuristic để loại bỏ lần cuối các cặp đôi tài xế - hành khách ít tối ưu về mặt địa lý trước khi gọi API bản đồ, tránh tốn kém. 
+- Công thức Haversine:  tính khoảng cách đường chim bay  giữa hai điểm trên mặt cầu.
+Trong đó:    là vĩ độ,    là kinh độ,    là bán kính trái đất (6,371 km).  
+- Công thức Heuristic: (Kiểm tra xem đoạn đường đi thêm có quá ngưỡng với lộ trình gốc hay khong)
+
+
+ Cost   =   Dist(Cur → Đón) + Dist(Đón → Trả) + Dist(Trả → Đích) - Dist(Cur → Đích)
+	         * Đón / Trả: là điểm mà khách hàng chọn.
+         * Cur: là tọa độ hiện tại của xe tài xế đang xét.
+         * Đích: là đích đến ban đầu của tài xế đang xét.
+
+
+- Ngưỡng heuristic khuyến nghị (Có thể điều chỉnh theo khảo sát) : 15–25 km
+         * Dưới 15 km: Ưu tiên cao (Rất tiện đường, chuyển sang tính toán chính xác).
+         * 15–25 km: Xem xét (Giữ lại nếu không có ứng viên tốt hơn).
+         * Trên 25 km: Loại bỏ ngay (Quá xa, chấp nhận đi vòng hoặc tài xế lỗ tiền xăng)..
+- Lý do chọn ngưỡng này: Người dùng Việt Nam (đi ké xe) thường chấp nhận detour 10–20% lộ trình gốc (ví dụ lộ trình 100km, chấp nhận thêm 10–20km).
+         * Nếu heuristic > 25km → 90% trường hợp GraphHopper cũng sẽ loại → tiết kiệm API call.
+
+
+- Ứng dụng của Haversine: Xây dựng một bộ lọc (Filter Layer) đầu vào. Nếu giá trị Heuristic của khách hàng và tài xế dựa trên heuristic lớn hơn x km (x dựa trên ngưỡng phía trên), hệ thống sẽ loại bỏ ứng viên này ngay lập tức. Điều này giúp giảm tải cho hệ thống Routing Engine phía sau.
+
+
+  
+
+
+
+* Thư viện sử dụng: haversine
+- Link:   
+         * Trang lý thuyết: Wikipedia
+         * Trang thực hành : https://www.movable-type.co.uk/scripts/latlong.html
+         * Github (Python): https://github.com/mapado/haversine  
+         * Github: https://github.com/TheAlgorithms/Python/blob/master/geodesy/haversine_distance.py
+         * Hướng dẫn (có code mẫu): https://www.baeldung.com/cs/haversine-formula
+
+
+( Nếu cần đầy đủ tính năng, ví dụ chuyển đổi đơn vị thì dùng mapado/haversine, còn lại nếu muốn dùng nhanh, nhẹ thì dùng link github phía dưới)
+
+
+________________
+            3. Công nghệ Định tuyến & Map Matching
+- Sau khi các bộ lọc hình học sơ cấp (Lớp 1-4) đã loại bỏ phần lớn các xe không phù hợp, danh sách ứng viên còn lại (khoảng 10-50 xe) sẽ được đưa vào phân tích chuyên sâu. Tại giai đoạn này, hệ thống không chỉ trả lời câu hỏi "Có đi ngang qua không?", mà phải trả lời chính xác: "Đi chung bao xa?", "Tốn thêm bao nhiêu công sức?" và "Hai lộ trình có thực sự song hành không?". Quy trình này gồm 3 bước:
+            * Map Matching: Làm sạch và khử nhiễu tín hiệu GPS.
+            * Routing: Tính toán lộ trình thực tế.
+            * Analysis: Phân tích độ trùng lặp và chi phí đi vòng.
+
+
+            * Xử lý & Khử nhiễu GPS (Map Matching)
+- Trước khi tính toán bất kỳ khoảng cách nào, hệ thống phải xử lý dữ liệu GPS thô từ điện thoại tài xế. Tín hiệu GPS trong đô thị thường bị nhiễu (sai số 10-20m) do nhà cao tầng, dẫn đến tọa độ bị nhảy (drift) ra khỏi mặt đường.
+- Giải pháp: Sử dụng mô hình học máy xác suất Hidden Markov Model (HMM).
+- Nguyên lý: Thuật toán này không tin tưởng tuyệt đối vào điểm GPS hiện tại. Nó xem xét cả "chuỗi hành trình" quá khứ và cấu trúc mạng lưới đường để tính xác suất: "Với hướng đi này và tốc độ này, xác suất tài xế đang ở làn đường chính là 90%, đường hẻm bên cạnh chỉ là 10%". Sau đó, nó "hít" (snap) tọa độ GPS vào đúng tim đường có xác suất cao nhất.  
+- Công nghệ: Module graphhopper-map-matching (HMM đã được tích hợp sẵn trong GraphHopper).
+            * Github: https://github.com/graphhopper/map-matching
+            * Tài liệu hướng dẫn HMM:  link
+  
+  
+
+Mô hình HMM giúp khớp quỹ đạo vào mạng lưới đường giao thông, đồng thời lọc bỏ và nắn lại các điểm nhiễu GPS bất thường .
+
+
+
+
+            * Công cụ Định tuyến (Routing Engine)
+- Sau khi có tọa độ GPS chính xác (đã khử nhiễu bởi HMM), hệ thống tiến hành tính toán lộ trình di chuyển thực tế. Đây là bước tạo ra dữ liệu đầu vào quan trọng cho các thuật toán đánh giá kinh tế sau này.
+- Lựa chọn công nghệ:  hai công nghệ mã nguồn mở hàng đầu là OSRM và GraphHopper:
+            * OSRM (Open Source Routing Machine): Một engine định tuyến viết bằng C++, nổi tiếng với tốc độ phản hồi cực nhanh (mili giây) nhờ kỹ thuật tiền xử lý dữ liệu Contraction Hierarchies. Tuy nhiên, OSRM có nhược điểm là yêu cầu tài nguyên RAM rất lớn và thiếu linh hoạt khi cần thay đổi các tham số lộ trình tức thời.
+            * GraphHopper: Một giải pháp dựa trên Java, chú trọng vào sự cân bằng giữa hiệu suất và khả năng tùy biến. GraphHopper linh hoạt hơn OSRM, cho phép thay đổi các quy tắc định tuyến (Routing Profiles) một cách linh hoạt mà không cần xử lý lại toàn bộ dữ liệu bản đồ, ngoài ra nó còn hỗ trợ tốt cho các thiết bị di động.
+- So sánh 2 công nghệ trên:
+
+
+Tiêu chí
+	OSRM
+	GraphHopper
+	Ngôn ngữ
+	C++
+	Java (Dễ tích hợp & mở rộng)
+	Tốc độ
+	Ưu thế tuyệt đối cho ma trận lớn
+	Rất nhanh, ổn định cho điều hướng
+	Độ linh hoạt
+	Thấp (Các tham số bị "đóng gói" sẵn)
+	Cao (Tùy chỉnh theo yêu cầu)
+	Tài nguyên
+	Yêu cầu RAM rất cao (đối với OSM toàn cầu)
+	Sử dụng tài nguyên tối ưu hơn
+	
+
+- Mặc dù OSRM có tốc độ nhanh hơn, nhưng dựa trên đặc thù bài toán Kinh tế chia sẻ và Vận tải kết hợp của dự án, em nghĩ GraphHopper phù hợp hơn OSRM vì:
+            * Linh hoạt cho từng loại phương tiện: OptiGo không chỉ chở người mà còn kết hợp gửi hàng. Xe tải hàng thì không được đi vào đường cấm tải, còn ô tô thì có thể đi trên một số tuyến cấm tải,... GraphHopper cho phép nhóm dễ dàng thiết lập các "luật" riêng cho từng loại xe này. Trong khi OSRM thì khá khó để thực hiện.
+            * Map Matching mạnh mẽ: Để tận dụng "ghế trống" và "xe rỗng chiều về", hệ thống phải khớp chính xác tọa độ GPS thực tế của tài xế vào mạng lưới đường bộ. GraphHopper cung cấp khả năng khớp dữ liệu GPS bị nhiễu vào bản đồ với độ chính xác cao. Điều này giúp OptiGo xác định đúng lộ trình thực tế của tài xế để thực hiện ghép nối những đơn hàng hoặc khách hàng đang chờ ở phía trước một cách kịp thời và hiệu quả nhất.
+            * Lộ trình thông minh:  là điểm yếu lớn nhất của OSRM. Vì tối ưu tốc độ, OSRM thường cố định tuyến đường (có thể thay đổi nhưng khá cứng nhắc). Trái lại,  GraphHopper cho phép thay đổi trọng số ngay khi gọi API (Ví dụ: "Tìm đường nhanh nhất nhưng né quận 1 vì đang kẹt xe" hoặc "Ưu tiên đường không thu phí"). Nó xử lý việc này cực mượt nhờ kiến trúc linh hoạt.
+            * Hỗ trợ Mobile: GraphHopper có thể chạy offline trên thiết bị di động (Android/iOS) nếu cần thiết, giúp ứng dụng hoạt động ngay cả khi mất sóng.
+⇒ Kết luận: lựa chọn GraphHopper vì đây là giải pháp cân bằng nhất giữa tốc độ và độ tùy biến. Khác với OSRM chỉ mạnh về tính toán thô, GraphHopper cho phép OptiGo làm chủ hoàn toàn các kịch bản thực tế như: quản lý đa dạng loại xe, sửa lỗi GPS và linh hoạt thay đổi lộ trình theo nhu cầu người dùng
+            * Quy trình Tính toán (Routing Workflow)
+- Hệ thống sẽ gọi API của GraphHopper để thực hiện 2 phép tính song song cho mỗi cặp Tài xế - Khách hàng tiềm năng:
+- Tính Lộ trình Gốc (Rold):
+            * Input: Vị trí hiện tại của Tài xế  →  Đích đến của Tài xế.
+            * Mục đích: Xác định chi phí cơ sở (Baseline) nếu tài xế đi thẳng, không đón ai.
+- Tính Lộ trình Gốc (Rnew):
+            * Input: Vị trí hiện tại → Điểm Đón → Điểm Trả → Đích đến.
+            * Mục đích: Xác định lộ trình thực tế khi phải đi vòng đón khách.
+
+
+⇒  Lộ trình gốc và lộ trình ghép này chính là cơ sở vô cùng quan trọng cho tính toán sau này.
+
+
+            * Triển khai GraphHopper:
+- Nguyên lý: GraphHopper xây dựng mạng lưới đường từ dữ liệu OpenStreetMap (OSM), sau đó dùng thuật toán Contraction Hierarchies (CH) hoặc Dijkstra để tìm đường ngắn nhất/nhanh nhất. Khi có yêu cầu ghép chuyến, hệ thống sẽ truyền các điểm waypoint (A → C → D → B), GraphHopper sẽ tính lộ trình tối ưu, detour (đi thêm), ETA, và polyline. Map Matching sẽ dùng Hidden Markov Model (HMM) để snap GPS nhiễu vào đường thật → xác định vị trí chính xác của tài xế đang di chuyển.
+Sự linh hoạt tuyến đường và chi phí của GraphHopper.    
+- Cách dùng 
+            * Tải dữ liệu OSM Việt Nam (.osm.pbf từ Geofabrik) → build graph (lần đầu, mất vài phút-giờ).
+            * Tạo custom profile riêng: xe 4 chỗ (ưu tiên nhanh), xe tải nhẹ (tránh cấm tải), xe máy.
+            * Khi match: Gọi API với waypoints (vị trí tài xế hiện tại → pickup → dropoff → điểm đến gốc).
+            * Nhận kết quả: km mới, detour = km mới - km gốc, ETA → detour < ngưỡng (vd: 15km) → match 
+            * Map Matching: Gửi chuỗi GPS của tài xế → snap vào đường → cập nhật vị trí thực tế để ghép đơn mới dọc đường.
+
+
+- Tài liệu tham khảo: 
+            * Trang chủ: https://www.graphhopper.com/
+            * Trang docs (quick start, API, custom profiles): https://docs.graphhopper.com/openapi
+            * Trang test bản đồ: https://graphhopper.com/maps/?profile=car&layer=Omniscale
+            * Trang tải bản đồ OSM Việt Nam: https://download.geofabrik.de/asia/vietnam.html
+            * Hướng dẫn tùy chỉnh profile (custom luật, phương tiện): https://www.graphhopper.com/blog/2020/05/06/get-started-with-customizable-routing/
+            * Hướng dẫn: https://www.graphhopper.com/blog/2024/07/05/route-planning-step-by-step/
+            * Cộng đồng hỗ trợ: https://discuss.graphhopper.com/
+
+
+- Github:
+            * Thư viện gốc (Java): https://github.com/graphhopper/graphhopper
+            * Thư viện dành riêng cho map-matching: https://github.com/graphhopper/map-matching
+            * Hướng dẫn sử dụng từ đầu: https://github.com/graphhopper/graphhopper/blob/master/docs/core/quickstart-from-source.md
+            * Code mẫu map-matching: https://github.com/graphhopper/graphhopper/tree/master/example
+
+
+- Video hướng dẫn:
+            * 2019: Flexible Routing with GraphHopper
+            * GraphHopper Routing Engine - New Features Overview of the latest features and development
+            * GraphHopper Directions API Explained
+
+
+
+
+            * Dự phòng (Cho thư viện OSRM):
+- Tài liệu tham khảo:
+            * Trang chủ chính thức: https://project-osrm.org/
+            * Test bản đồ OSM: https://map.project-osrm.org/
+            * Hướng dẫn: https://github.com/Project-OSRM/osrm-backend/wiki/Running-OSRM
+            * Hướng dẫn map-matching: https://github.com/Project-OSRM/osrm-backend/wiki/Map-Matching-API
+            * Cộng đồng hỗ trợ: https://github.com/Project-OSRM/osrm-backend/discussions
+- Github:
+            * Tài liệu: https://github.com/Project-OSRM/osrm-backend/wiki
+            * Thư viện chính: https://github.com/Project-OSRM/osrm-backend
+- Video hướng dẫn:
+            * Free OSRM course for beginners w/ Python
+            * Playlist: OSRM (Open Source Routing Machine) - YouTube
+
+
+            * Độ trùng lặp (Route Overlap) & Detour
+- Để xác định mức độ hiệu quả của việc ghép chuyến, OptiGo cần tính toán:
++ Độ lệch tuyến (Detour Ratio): Tỷ lệ quãng đường phát sinh so với quãng đường gốc.
++ Tỷ lệ trùng lặp (Overlap Percentage): Phần quãng đường mà tài xế và hành khách đi chung.
+
+
+a/ Độ lệch tuyến (Detour):  Đây là chỉ số để trả lời câu hỏi: "Tài xế phải chịu thiệt (đi xa thêm) bao nhiêu để đón khách này?".  Nếu detour quá lớn, tài xế sẽ lỗ tiền xăng hoặc bị muộn giờ. Để tính toán tỷ lệ detour có chấp nhận được hay không cần lần lượt tính như sau:
+- Input: Hệ thống trích xuất dữ liệu hình học (LineString) từ kết quả Routing Engine ở bước trước:
+            * Rorg (Original Route): Lộ trình gốc của tài xế (A → B).
+            * Rnew (Merged Route): Lộ trình sau khi ghép (A → Đón → Trả → B).
+
+
+- Chênh lệch Tuyệt đối (Absolute Detour):
+            * Mục đích: Tính ra chính xác quãng đường đi thêm, để tính toán chi phí (tiền xăng/thời gian) mà tài xế phải bỏ ra thêm → tính giá cước bù thêm cho tài xế và là cơ sở cho việc xác định tỉ lệ.
+(Trong đó: Rnew là lộ trình ghép, Rold là lộ trình gốc)  
+- Tỷ lệ Chênh lệch (Relative Detour Ratio):
+            * Mục đích: Để AI quyết định xem mức độ đi vòng này có "chấp nhận được" với tâm lý khách hàng hay không.  
+- Dựa trên khảo sát hành vi người dùng, ngưỡng khuyến nghị như sau (Threshold):
+               * Nếu Detour % <= 10%: Ưu tiên cao (Rất tiện đường).
+               * Nếu 10% < Detour % <= 20%: Xem xét (Nếu không có xe nào tốt hơn).
+               * Nếu Detour% > 20%: loại (Để đảm bảo trải nghiệm người dùng)
+b/ Tỷ lệ trùng lặp (Overlap Percentage):  Sau khi xác định chi phí (Detour) là chấp nhận được, hệ thống cần xác định mức độ "tiện chuyến". Một chuyến đi lý tưởng là khi khách hàng và tài xế "đi chung đường" trên một đoạn dài. Tỉ lệ đi chung càng cao, càng hiệu quả kinh tế..  
+
+
+- Input: ta không quan tâm đến điểm A, B của tài xế nữa, mà quan tâm đến Hình dáng con đường.
+               * Ldriver: LineString của lộ trình gốc Rorg (Đại diện cho luồng di chuyển chính).
+               * Lguest  : LineString của nhu cầu khách hàng (Đoạn đường khách muốn đi).
+
+
+- Nguyên lý hoạt động (Hành lang tuyến): Hệ thống tạo vùng đệm (Buffer) quanh Ldriver. Nếu phần nào Lguest nằm  trong vùng đệm thì nghĩa là khách đi cùng đường. 
+               * Bước 1: Xác định Tổng nhu cầu của Khách (Dtotal), đây là tổng quãng đường khách muốn đi.  
+               * Bước 2:  Xác định Vùng đệm của Tài xế (Areadriver), Sử dụng phép toán Buffer để tạo hành lang bán kính r (ví dụ 500m).  
+               * Bước 3: Tính Quãng đường đi chung (Dshared). Tìm phần giao nhau giữa đường khách (Lguest) và vùng đệm. (Dshared là tổng chiều dài các đoạn thẳng của Lguest nằm lọt bên trong đa giác Areadriver. Nếu khách đi hoàn toàn trong vùng đệm của tài xế thì Dshared = Dtotal.)  
+               * Bước 4: Tính Tỷ lệ trùng lặp (Overlap%)  
+- Sử dụng thư viện Shapely: Là thư viện Python tiêu chuẩn để xử lý và phân tích các thực thể hình học phẳng. Để tính toán, hệ thống sẽ giải mã Polyline thành các đối tượng của Shapely:
+                  * Point (Điểm): Tọa độ GPS của điểm đón/trả.  
+                  * LineString (Đường): Đối tượng hình học tạo ra từ Polyline, đại diện cho lộ trình của tài xế hoặc hành khách.
+                  * Polygon (Đa giác): Vùng đệm (Hành lang tuyến) bao quanh lộ trình.
+( Polyline là định dạng dữ liệu phổ biến từ các API bản đồ (Google Maps, OSRM). Nó là một chuỗi các tọa độ GPS nối tiếp nhau để mô tả hình dáng thực tế của con đường.
+
+
+Ví dụ thực tế: Tài xế đi trên Đại lộ Thăng Long. Shapely tạo ra vùng đệm bán kính 1km quanh đại lộ. Khách hàng muốn đi từ BigC đến Hòa Lạc. Vì toàn bộ quãng đường khách đi đều nằm trong vùng đệm 1km đó, Shapely tính ra Overlap cao (~90%) → Hệ thống gợi ý ghép chuyến.
