@@ -2,7 +2,8 @@
 
 > **Mã tài liệu:** `UC-20` đến `UC-23`  
 > **Dịch vụ chịu trách nhiệm:** `dispatch-service`  
-> **Tài liệu tham chiếu:** [SRS v1.4 (Mục 3.4, Mục 4)](../01-srs/srs.md), [quyet-dinh.md](../00-brainstorm/quyet-dinh.md)
+> **Tài liệu tham chiếu:** [SRS v1.5 (Mục 3.4, Mục 4)](../01-srs/srs.md), [quyet-dinh.md](../00-brainstorm/quyet-dinh.md)  
+> **Phiên bản:** 1.1
 
 ---
 
@@ -22,15 +23,14 @@ sequenceDiagram
     Driver->>Gateway: POST /api/v1/trips/:id/complete
     Gateway->>DispatchSvc: Forward request kèm X-User-Id
     
-    DispatchSvc->>DB: Truy vấn chuyến xe & kiểm tra trạng thái
-    alt Trạng thái chuyến khác IN_TRIP hoặc không phải tài xế của chuyến
+    DispatchSvc->>DB: Cập nhật có điều kiện: UPDATE trips SET status = 'COMPLETED', completed_at = NOW() WHERE id = trip_id AND status = 'IN_TRIP' AND driver_id = driver_id
+    alt Cập nhật thất bại (0 dòng: trạng thái khác IN_TRIP hoặc không phải tài xế của chuyến)
         DispatchSvc-->>Gateway: Lỗi 400 INVALID_TRIP_STATUS / 403 FORBIDDEN
-        Gateway-->>Driver: Lỗi trạng thái không hợp lệ
-    else Hợp lệ (Status == IN_TRIP)
-        DispatchSvc->>DB: UPDATE trips SET status = 'COMPLETED', completed_at = NOW()
+        Gateway-->>Driver: Lỗi trạng thái không hợp lệ hoặc không có quyền
+    else Cập nhật thành công (1 dòng affected)
         DispatchSvc->>DB: INSERT status_timeline {trip_id, status: 'COMPLETED', timestamp: NOW()}
         
-        DispatchSvc->>UserSvc: Cập nhật tài xế từ BUSY quay lại ONLINE
+        DispatchSvc->>UserSvc: Chuyển tài xế từ BUSY về ONLINE (nội bộ, không qua api-gateway)
         
         DispatchSvc->>RedisStreams: XADD stream:trip_events {type: "TripCompleted", trip_id, customer_id, driver_id, fare, timestamp}
         DispatchSvc->>RedisPubSub: PUBLISH ride:trip_updates {trip_id, status: "COMPLETED"}
@@ -48,20 +48,21 @@ sequenceDiagram
 * **FR liên quan:** `FR-19`
 * **Actor:** Tài xế (Driver).
 * **Tiền điều kiện:** Chuyến xe đã được tài xế nhận (`ACCEPTED`) và tài xế đang thực hiện cuốc xe.
-* **Luồng chính:**
-  1. Tài xế di chuyển tới điểm đón và bấm cập nhật: `ACCEPTED` $\rightarrow$ `PICKING_UP` (`POST /api/v1/trips/:id/picking-up`).
-  2. Hệ thống ghi nhận trạng thái `PICKING_UP` và lưu mốc thời gian vào bảng lịch sử `status_timeline`. Phát thông báo qua WebSocket cho khách hàng.
-  3. Khi đón được khách lên xe, tài xế bấm bắt đầu chuyến: `PICKING_UP` $\rightarrow$ `IN_TRIP` (`POST /api/v1/trips/:id/start-trip`).
-  4. Hệ thống cập nhật trạng thái `IN_TRIP`, lưu mốc thời gian vào `status_timeline`. Phát thông báo qua WebSocket.
-  5. Khi tới điểm trả, tài xế bấm hoàn thành cuốc: `IN_TRIP` $\rightarrow$ `COMPLETED` (`POST /api/v1/trips/:id/complete`).
-  6. Hệ thống thực hiện:
-     - Đổi trạng thái sang `COMPLETED`.
+* **Luồng chính (Cập nhật có điều kiện theo trạng thái nguồn hợp lệ):**
+  1. Tài xế di chuyển tới điểm đón và bấm cập nhật đón khách: `ACCEPTED` $\rightarrow$ `PICKING_UP` (`POST /api/v1/trips/:id/picking-up`).
+     - Hệ thống thực hiện cập nhật có điều kiện: `UPDATE trips SET status = 'PICKING_UP' WHERE id = trip_id AND status = 'ACCEPTED' AND driver_id = driver_id`.
+     - Ghi nhận trạng thái `PICKING_UP` và lưu mốc thời gian vào bảng lịch sử `status_timeline`. Phát thông báo qua WebSocket cho khách hàng (`ride:trip_updates`).
+  2. Khi đón được khách lên xe, tài xế bấm bắt đầu chở khách: `PICKING_UP` $\rightarrow$ `IN_TRIP` (`POST /api/v1/trips/:id/start-trip`).
+     - Hệ thống thực hiện cập nhật có điều kiện: `UPDATE trips SET status = 'IN_TRIP' WHERE id = trip_id AND status = 'PICKING_UP' AND driver_id = driver_id`.
+     - Cập nhật trạng thái `IN_TRIP`, lưu mốc thời gian vào `status_timeline`. Phát thông báo qua WebSocket (`ride:trip_updates`).
+  3. Khi tới điểm trả, tài xế bấm hoàn thành cuốc xe: `IN_TRIP` $\rightarrow$ `COMPLETED` (`POST /api/v1/trips/:id/complete`).
+     - Hệ thống thực hiện cập nhật có điều kiện: `UPDATE trips SET status = 'COMPLETED', completed_at = NOW() WHERE id = trip_id AND status = 'IN_TRIP' AND driver_id = driver_id`.
      - Ghi mốc thời gian hoàn thành vào `status_timeline`.
-     - Gọi `user-service` đưa tài xế từ `BUSY` quay trở lại trạng thái `ONLINE` để tiếp tục đón khách mới.
+     - Gọi `user-service` đưa tài xế từ `BUSY` quay trở lại trạng thái `ONLINE` (nội bộ, không qua api-gateway) để tiếp tục đón khách mới.
      - Phát sự kiện `TripCompleted` vào **Redis Streams** (`stream:trip_events`) mang theo đầy đủ thông tin: `trip_id`, `customer_id`, `driver_id`, giá cước đã chốt (`fare`).
-     - Phát event qua Redis Pub/Sub để `ws-gateway` đẩy thông báo hoàn tất xuống cho cả khách hàng và tài xế.
+     - Phát event qua Redis Pub/Sub (`ride:trip_updates`) để `ws-gateway` đẩy thông báo hoàn tất xuống cho cả khách hàng và tài xế (dừng stream GPS theo UC-31).
 * **Luồng ngoại lệ:**
-  - *Chuyển trạng thái nhảy cóc (ví dụ từ `ACCEPTED` nhảy thẳng lên `IN_TRIP` hoặc `COMPLETED`):* Bị chặn với mã lỗi `INVALID_TRIP_STATUS` (HTTP 400).
+  - *Chuyển trạng thái không thỏa mãn điều kiện nguồn hợp lệ (nhảy cóc, trạng thái chuyến đã kết thúc hoặc sai thứ tự):* Khi lệnh cập nhật DB trả về 0 dòng affected, hệ thống từ chối với mã lỗi `INVALID_TRIP_STATUS` (HTTP 400).
   - *Tài xế khác không phải người nhận chuyến cố tình cập nhật:* Bị từ chối với lỗi `FORBIDDEN` (HTTP 403).
 * **Hậu điều kiện:** Máy trạng thái chuyến xe được tuân thủ nghiêm ngặt; sự kiện `TripCompleted` sẵn sàng cho hệ thống thanh toán và phân tích xử lý tiếp.
 * **Dữ liệu demo cần thấy trên Postman:** `trip_id`, trạng thái hiện tại (`PICKING_UP`, `IN_TRIP`, `COMPLETED`), thời gian cập nhật.
@@ -72,23 +73,22 @@ sequenceDiagram
 * **FR liên quan:** `FR-20`, `FR-25`
 * **Actor:** Khách hàng (Customer), Tài xế (Driver).
 * **Tiền điều kiện:** Chuyến xe đang ở một trong các trạng thái có thể hủy hợp lệ.
-* **Luồng chính:**
+* **Luồng chính (Cập nhật có điều kiện theo trạng thái nguồn hợp lệ):**
   1. Người dùng gửi yêu cầu hủy chuyến (`POST /api/v1/trips/:id/cancel`).
-  2. `dispatch-service` kiểm tra vai trò người gọi và trạng thái hiện tại của chuyến:
-     - **Nếu là Khách hàng:** Được phép hủy khi chuyến đang ở trạng thái `MATCHING` (đang tìm tài xế) hoặc `ACCEPTED` (đã có tài xế nhận nhưng chưa bắt đầu di chuyển đón).
-     - **Nếu là Tài xế:** Được phép hủy khi chuyến đang ở trạng thái `ACCEPTED` hoặc `PICKING_UP` (gặp sự cố phương tiện hoặc không thể tiếp cận điểm đón).
-  3. Nếu điều kiện hợp lệ:
-     - Cập nhật trạng thái chuyến xe thành `CANCELLED`.
+  2. `dispatch-service` xác định vai trò người gọi và thực thi cập nhật có điều kiện:
+     - **Nếu là Khách hàng:** Cập nhật có điều kiện `UPDATE trips SET status = 'CANCELLED' WHERE id = trip_id AND customer_id = user_id AND status IN ('MATCHING', 'ACCEPTED')`.
+     - **Nếu là Tài xế:** Cập nhật có điều kiện `UPDATE trips SET status = 'CANCELLED' WHERE id = trip_id AND driver_id = user_id AND status IN ('ACCEPTED', 'PICKING_UP')`.
+  3. Nếu cập nhật thành công (1 dòng affected):
      - Ghi nhận mốc thời gian hủy vào `status_timeline`.
-     - Nếu chuyến đã có tài xế gán vào (`ACCEPTED` hoặc `PICKING_UP`): Gọi `user-service` đưa tài xế từ `BUSY` quay trở lại `ONLINE`.
+     - Nếu chuyến đã có tài xế gán vào (`ACCEPTED` hoặc `PICKING_UP`): Gọi `user-service` đưa tài xế từ `BUSY` quay trở lại `ONLINE` (nội bộ, không qua api-gateway).
      - Giải phóng khóa tài xế nếu có.
      - **Chính sách không phạt (FR-25):** Không trừ bất kỳ khoản phí phạt nào từ ví của khách hàng hay tài xế.
-     - Bắn sự kiện `TripCancelled` vào Redis Streams (`stream:trip_events`) và Redis Pub/Sub (`ride:trip_updates`).
+     - Phát sự kiện `TripCancelled` vào Redis Streams (`stream:trip_events`) và Redis Pub/Sub (`ride:trip_updates`).
      - Trả về thông báo hủy chuyến thành công.
-* **Luồng ngoại lệ (Cố tình hủy sai trạng thái):**
-  - *Khách hàng cố tình hủy khi tài xế đang đến đón (`PICKING_UP`):* Từ chối với lỗi `INVALID_TRIP_STATUS` (HTTP 400).
-  - *Khách hàng hoặc Tài xế cố tình hủy khi xe đang chạy (`IN_TRIP`):* Bị chặn tuyệt đối với mã lỗi `INVALID_TRIP_STATUS` (HTTP 400).
-* **Hậu điều kiện:** Chuyến xe kết thúc ở trạng thái `CANCELLED`; tài xế được giải phóng sang `ONLINE`; không phát sinh trừ tiền ví.
+* **Luồng ngoại lệ (Cố tình hủy sai trạng thái / Không thỏa điều kiện nguồn):**
+  - *Cập nhật DB trả về 0 dòng affected (ví dụ: Khách hàng cố tình hủy khi `PICKING_UP`, hoặc Khách/Tài xế hủy khi xe đang chạy `IN_TRIP`, hoặc chuyến đã `COMPLETED`/`EXPIRED`):* Bị từ chối với mã lỗi `INVALID_TRIP_STATUS` (HTTP 400).
+  - *Người gọi không phải là khách hàng hoặc tài xế của chuyến:* Trả về mã lỗi `FORBIDDEN` (HTTP 403).
+* **Hậu điều kiện:** Chuyến xe kết thúc ở trạng thái `CANCELLED`; tài xế (nếu có) được giải phóng sang `ONLINE`; không phát sinh trừ tiền ví.
 * **Dữ liệu demo cần thấy trên Postman:** `trip_id`, trạng thái mới `CANCELLED`, người thực hiện hủy (`cancelled_by`), thời gian hủy.
 
 ---
@@ -98,17 +98,17 @@ sequenceDiagram
 * **Actor:** Hệ thống (`dispatch-service`).
 * **Tiền điều kiện:** Chuyến xe đang ở trạng thái `MATCHING`.
 * **Luồng chính:**
-  - **Trường hợp A (Quét ra 0 tài xế ngay lúc đặt xe):**
-    1. Khi khách vừa tạo chuyến, `location-service` quét bán kính 5km trả về 0 tài xế rảnh.
-    2. `dispatch-service` cập nhật ngay trạng thái chuyến xe thành `EXPIRED` mà không cần chờ 30 giây.
-  - **Trường hợp B (Hết 30 giây không tài xế nào bấm nhận):**
-    1. Bộ đếm thời gian 30 giây của chuyến xe hết hạn mà trạng thái vẫn là `MATCHING`.
-    2. `dispatch-service` cập nhật trạng thái chuyến xe thành `EXPIRED`.
+  - **Trường hợp A (Quét ra 0 tài xế ngay lúc đặt xe - UC-17/UC-18):**
+    1. Khi khách vừa tạo chuyến, `location-service` trả danh sách ứng viên, `user-service` lọc `ONLINE`; còn 0 tài xế thì chuyển `EXPIRED` ngay.
+    2. `dispatch-service` cập nhật có điều kiện `UPDATE trips SET status = 'EXPIRED' WHERE id = trip_id AND status = 'MATCHING'` ngay lập tức mà không cần chờ hết hạn 30 giây.
+  - **Trường hợp B (Quá hạn 30 giây do không có tài xế nhận - Tiến trình quét nền định kỳ):**
+    1. Tiến trình quét nền định kỳ của `dispatch-service` quét các chuyến xe đang ở trạng thái `MATCHING` mà thời hạn tìm xe đã quá hạn (thời hạn tìm xe 30 giây đã được lưu bền vững vào bản ghi chuyến ở UC-17). Tiến trình này chạy độc lập theo chu kỳ và chạy quét ngay khi service khởi động; do đó việc restart service hoặc rolling update hệ thống sẽ không làm chuyến xe bị kẹt ở trạng thái `MATCHING`.
+    2. `dispatch-service` thực thi cập nhật có điều kiện: `UPDATE trips SET status = 'EXPIRED' WHERE id = trip_id AND status = 'MATCHING'`.
   - **Hành động chung:**
     3. Ghi mốc thời gian hết giờ vào `status_timeline`.
     4. Xóa các đề nghị mời cuốc liên quan.
     5. Phát sự kiện `TripExpired` vào Redis Streams (`stream:trip_events`) để `ai-service` ghi nhận thống kê tỷ lệ hết giờ.
-    6. Phát thông báo qua Redis Pub/Sub để đẩy xuống WebSocket của khách hàng thông báo không tìm thấy tài xế.
+    6. Phát thông báo qua Redis Pub/Sub (`ride:trip_updates`) để đẩy xuống WebSocket của khách hàng thông báo không tìm thấy tài xế.
 * **Hậu điều kiện:** Chuyến xe kết thúc ở trạng thái `EXPIRED`; khách hàng được giải phóng để có thể tạo chuyến mới.
 * **Dữ liệu demo cần thấy trên Postman/WS:** `trip_id`, trạng thái `EXPIRED`, lý do hết hạn (`NO_DRIVERS_AVAILABLE` hoặc `TIMEOUT_30S`).
 
@@ -126,7 +126,7 @@ sequenceDiagram
     4. Nếu không có: Trả về `data: null`.
   - **Kịch bản 2: Xem chi tiết một chuyến xe (`GET /api/v1/trips/:id`):**
     1. Client gửi request kèm mã `trip_id`.
-    2. `dispatch-service` kiểm tra quyền: Chuyến xe phải thuộc về `customer_id` hoặc `driver_id` của người gọi (hoặc Admin).
+    2. `dispatch-service` kiểm tra quyền: Chuyến xe phải thuộc về `customer_id` hoặc `driver_id` của người gọi (endpoint này chỉ dành cho Khách hàng và Tài xế của chính chuyến xe; Admin xem danh sách và chi tiết chuyến qua `/api/v1/admin/trips` ở UC-29).
     3. Trả về toàn bộ thông tin chi tiết của chuyến xe cùng mảng **`status_timeline`** gồm danh sách các trạng thái mà chuyến đã đi qua kèm mốc thời gian chính xác từng giây.
 * **Luồng ngoại lệ:**
   - *Xem chuyến không thuộc quyền sở hữu của mình:* Trả về lỗi `FORBIDDEN` (HTTP 403).

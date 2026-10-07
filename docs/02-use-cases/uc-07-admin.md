@@ -2,7 +2,8 @@
 
 > **Mã tài liệu:** `UC-29` đến `UC-30`  
 > **Dịch vụ chịu trách nhiệm:** `api-gateway`, `dispatch-service`, `user-service`, `location-service`, `ai-service`  
-> **Tài liệu tham chiếu:** [SRS v1.4 (Mục 3.7)](../01-srs/srs.md)
+> **Tài liệu tham chiếu:** [SRS v1.5 (Mục 3.7)](../01-srs/srs.md)  
+> **Phiên bản:** 1.1
 
 ---
 
@@ -25,17 +26,17 @@ sequenceDiagram
         Gateway-->>Admin: Lỗi 403 FORBIDDEN
     else Đúng quyền ADMIN
         Gateway->>DispatchSvc: Forward request kèm X-User-Role: ADMIN
-        DispatchSvc->>DB: Truy vấn chuyến xe theo ID
         
-        alt Chuyến đã kết thúc trước đó (COMPLETED, CANCELLED, EXPIRED)
+        DispatchSvc->>DB: Cập nhật có điều kiện: UPDATE trips SET status = 'CANCELLED', cancelled_by = 'ADMIN', cancel_reason = reason WHERE id = trip_id AND status IN ('CREATED', 'MATCHING', 'ACCEPTED', 'PICKING_UP', 'IN_TRIP')
+        
+        alt Cập nhật thất bại (0 dòng: Chuyến đã kết thúc COMPLETED/CANCELLED/EXPIRED)
             DispatchSvc-->>Gateway: Lỗi 400 INVALID_TRIP_STATUS (Chuyến đã kết thúc, không thể hủy)
             Gateway-->>Admin: 400 Bad Request
-        else Chuyến đang hoạt động (CREATED, MATCHING, ACCEPTED, PICKING_UP, IN_TRIP)
-            DispatchSvc->>DB: UPDATE trips SET status = 'CANCELLED', cancelled_by = 'ADMIN', cancel_reason = reason
+        else Cập nhật thành công (1 dòng affected)
             DispatchSvc->>DB: INSERT status_timeline {trip_id, status: 'CANCELLED', note: 'ADMIN_FORCE_CANCEL', time: NOW()}
             
             alt Chuyến đã có tài xế nhận (ACCEPTED, PICKING_UP, IN_TRIP)
-                DispatchSvc->>UserSvc: Cập nhật tài xế từ BUSY quay trở lại ONLINE
+                DispatchSvc->>UserSvc: Chuyển tài xế từ BUSY về ONLINE (nội bộ, không qua api-gateway)
                 Note over DispatchSvc,UserSvc: Giải phóng tài xế để tiếp tục làm việc
             end
             
@@ -57,7 +58,7 @@ sequenceDiagram
 * **FR liên quan:** `FR-32`
 * **Actor:** Quản trị viên (Admin).
 * **Tiền điều kiện:** Đã đăng nhập bằng tài khoản Quản trị viên (role `ADMIN`).
-* **Quy tắc kiến trúc:** Tuân thủ triệt để nguyên tắc **Database-per-Service**. Admin xem dữ liệu chỉ đọc thông qua các endpoint do chính service sở hữu dữ liệu cung cấp, chuyển tiếp qua `api-gateway`:
+* **Quy tắc kiến trúc:** Tuân thủ triệt để nguyên tắc **Database-per-Service**. Mọi đường dẫn quản trị của Admin đều nằm dưới `/api/v1/admin/*`. Admin xem dữ liệu chỉ đọc thông qua các endpoint do chính service sở hữu dữ liệu cung cấp, chuyển tiếp an toàn qua `api-gateway`:
 * **Luồng chính:**
   1. **Xem danh sách người dùng (`GET /api/v1/admin/users`):**
      - `api-gateway` chuyển tiếp tới `user-service`.
@@ -67,10 +68,12 @@ sequenceDiagram
      - `dispatch-service` truy vấn `dispatchdb` và trả về danh sách toàn bộ chuyến đi kèm trạng thái hiện tại (`MATCHING`, `IN_TRIP`, `COMPLETED`, `CANCELLED`, `EXPIRED`).
   3. **Xem báo cáo vận hành kinh doanh (`GET /api/v1/admin/reports`):**
      - `api-gateway` chuyển tiếp tới `ai-service`.
-     - `ai-service` truy vấn `aidb` và trả về các số liệu thống kê tổng hợp (tổng chuyến, doanh thu, hoa hồng, tỷ lệ hủy).
+     - Chi tiết luồng tổng hợp số liệu và sinh nhận xét (AI/Heuristic) được mô tả đầy đủ tại UC-28.
   4. **Xem danh sách tài xế đang hoạt động và vị trí GPS mới nhất (`GET /api/v1/admin/drivers/active`):**
      - `api-gateway` chuyển tiếp tới `location-service`.
-     - `location-service` truy vấn danh sách các tài xế có cập nhật GPS gần nhất trong Redis GEO và trả về tọa độ `(lat, lng)`, khoảng cách và mốc thời gian nhận tín hiệu.
+     - Định nghĩa **"tài xế đang hoạt động"** tại use case này: Là các tài xế có cập nhật tín hiệu GPS mới nhất trong vòng **15 giây** gần nhất (`driver:last_seen`).
+     - `location-service` truy vấn Redis GEO và trả về danh sách gồm `driver_id`, tọa độ GPS mới nhất `(latitude, longitude)`, và mốc thời gian nhận tín hiệu (loại bỏ trường khoảng cách vì đây là danh sách giám sát không gian toàn khu vực).
+     - *Lưu ý:* Để theo dõi trạng thái làm việc (`ONLINE`/`OFFLINE`/`BUSY`), Admin xem tại danh sách người dùng (mục 1) do `user-service` quản lý.
 * **Luồng ngoại lệ:**
   - *Người dùng không có quyền ADMIN gọi các API này:* Bị từ chối ngay tại Gateway với mã lỗi `FORBIDDEN` (HTTP 403).
 * **Hậu điều kiện:** Toàn bộ thông tin giám sát được hiển thị đầy đủ cho Admin ở chế độ chỉ đọc mà không vi phạm nguyên tắc cô lập dữ liệu giữa các microservice.
@@ -81,24 +84,22 @@ sequenceDiagram
 ### UC-30: Admin hủy cưỡng bức chuyến kẹt (Admin Force-Cancel)
 * **FR liên quan:** `FR-37`
 * **Actor:** Quản trị viên (Admin).
-* **Tiền điều kiện:** Đã đăng nhập với quyền `ADMIN`; mã chuyến `trip_id` đang trong trạng thái chưa kết thúc.
+* **Tiền điều kiện:** Đã đăng nhập với quyền `ADMIN`.
 * **Ý nghĩa nghiệp vụ:** Đây là **hành động Ghi (Write Action) duy nhất** mà Admin được phép can thiệp vào nghiệp vụ vận hành chuyến đi, nhằm xử lý sự cố kẹt cuốc (ví dụ: tài xế mất sóng không thể bấm hoàn thành, hoặc hai bên tranh chấp không di chuyển).
-* **Luồng chính:**
+* **Luồng chính (Cập nhật có điều kiện theo trạng thái chưa kết thúc):**
   1. Admin gửi yêu cầu hủy cưỡng bức (`POST /api/v1/admin/trips/:id/force-cancel`) kèm lý do hủy (`reason`).
   2. `api-gateway` xác thực vai trò `ADMIN` và forward request sang `dispatch-service`.
-  3. `dispatch-service` kiểm tra trạng thái hiện tại của chuyến xe:
-     - Nếu chuyến đang ở một trong các trạng thái chưa kết thúc: `CREATED`, `MATCHING`, `ACCEPTED`, `PICKING_UP`, hoặc `IN_TRIP`.
-  4. Mở database transaction trong `dispatchdb`:
-     - Cập nhật trạng thái chuyến xe sang `CANCELLED`.
-     - Ghi nhận `cancelled_by = 'ADMIN'` và lý do hủy vào bản ghi chuyến.
+  3. `dispatch-service` thực thi cập nhật có điều kiện trong `dispatchdb`:
+     `UPDATE trips SET status = 'CANCELLED', cancelled_by = 'ADMIN', cancel_reason = reason WHERE id = trip_id AND status IN ('CREATED', 'MATCHING', 'ACCEPTED', 'PICKING_UP', 'IN_TRIP')`.
+  4. Nếu cập nhật thành công (1 dòng affected):
      - Chèn một dòng lịch sử vào bảng `status_timeline`: `{status: 'CANCELLED', note: 'ADMIN_FORCE_CANCEL', time: NOW()}`.
-  5. Nếu chuyến xe đã có tài xế được gán (ở các trạng thái `ACCEPTED`, `PICKING_UP`, `IN_TRIP`):
-     - `dispatch-service` gọi sang `user-service` giải phóng tài xế từ `BUSY` quay trở lại trạng thái `ONLINE` để tiếp tục đón khách.
-  6. **Chính sách không phạt (FR-25):** Hoàn toàn không trừ bất kỳ phí phạt nào từ ví của khách hàng hay tài xế.
-  7. Phát thông điệp sự kiện `TripCancelled` vào Redis Streams (`stream:trip_events`) và Redis Pub/Sub (`ride:trip_updates`).
-  8. Trả về thông báo hủy cưỡng bức thành công cho Admin.
+     - Nếu chuyến xe đã có tài xế được gán (ở các trạng thái `ACCEPTED`, `PICKING_UP`, `IN_TRIP`):
+       `dispatch-service` gọi sang `user-service` giải phóng tài xế từ `BUSY` quay trở lại trạng thái `ONLINE` (nội bộ, không qua api-gateway) để tiếp tục đón khách.
+     - **Chính sách không phạt (FR-25):** Hoàn toàn không trừ bất kỳ phí phạt nào từ ví của khách hàng hay tài xế.
+     - Phát thông điệp sự kiện `TripCancelled` vào Redis Streams (`stream:trip_events`) và Redis Pub/Sub (`ride:trip_updates`).
+     - Trả về thông báo hủy cưỡng bức thành công cho Admin.
 * **Luồng ngoại lệ:**
-  - *Chuyến xe đã kết thúc trước đó (`COMPLETED`, `CANCELLED`, `EXPIRED`):* Hệ thống từ chối hủy cưỡng bức với mã lỗi `INVALID_TRIP_STATUS` (HTTP 400 - Chuyến đã kết thúc, không thể hủy).
+  - *Chuyến xe đã kết thúc trước đó (`COMPLETED`, `CANCELLED`, `EXPIRED`):* Lệnh cập nhật DB trả về 0 dòng affected, hệ thống từ chối hủy cưỡng bức với mã lỗi `INVALID_TRIP_STATUS` (HTTP 400 - Chuyến đã kết thúc, không thể hủy).
   - *Người gọi không phải là Admin:* Bị từ chối với lỗi `FORBIDDEN` (HTTP 403).
   - *Mã chuyến không tồn tại:* Trả về lỗi `TRIP_NOT_FOUND` (HTTP 404).
 * **Hậu điều kiện:** Chuyến xe kẹt được giải phóng về trạng thái `CANCELLED`; tài xế được đưa về `ONLINE`; không gây sai lệch số dư ví; sự kiện hủy được ghi nhận đầy đủ vào hệ thống thống kê.

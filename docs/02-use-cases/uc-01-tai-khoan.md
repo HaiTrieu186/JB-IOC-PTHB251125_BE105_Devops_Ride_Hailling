@@ -2,7 +2,8 @@
 
 > **Mã tài liệu:** `UC-01` đến `UC-09`  
 > **Dịch vụ chịu trách nhiệm:** `user-service`, `api-gateway`  
-> **Tài liệu tham chiếu:** [SRS v1.4 (Mục 3.1)](../01-srs/srs.md)
+> **Tài liệu tham chiếu:** [SRS v1.5 (Mục 3.1)](../01-srs/srs.md)  
+> **Phiên bản:** 1.1
 
 ---
 
@@ -69,7 +70,7 @@ sequenceDiagram
     actor Client as Client
     participant Gateway as api-gateway
     participant UserSvc as user-service
-    participant Redis as Redis Cache & Session
+    participant Redis as Redis (Session & Pub/Sub)
     participant WSGateway as ws-gateway
 
     Client->>Gateway: POST /api/v1/auth/logout {refresh_token}<br>Header: Authorization Bearer <access_token>
@@ -80,14 +81,21 @@ sequenceDiagram
         UserSvc-->>Gateway: Lỗi 400 DRIVER_CANNOT_LOGOUT
         Gateway-->>Client: 400 Bad Request (Tài xế đang có chuyến chạy)
     else Hợp lệ
-        UserSvc->>Redis: DEL refresh:<refresh_token>
-        UserSvc->>Redis: SET blacklist:<jti> "revoked" EX <thời gian còn lại của exp>
-        alt Nếu là Tài xế đang ONLINE
-            UserSvc->>UserSvc: Cập nhật trạng thái OFFLINE trong DB
+        UserSvc->>Redis: Kiểm tra refresh_token thuộc đúng user_id của người gọi
+        alt Sai chủ sở hữu hoặc token không tồn tại
+            UserSvc-->>Gateway: Lỗi 401 INVALID_REFRESH_TOKEN
+            Gateway-->>Client: 401 Unauthorized (Sai chủ sở hữu refresh token)
+        else Đúng chủ sở hữu
+            UserSvc->>Redis: DEL refresh:<refresh_token>
+            UserSvc->>Redis: SET blacklist:<jti> "revoked" EX <thời gian còn lại của exp>
+            alt Nếu là Tài xế đang ONLINE
+                UserSvc->>UserSvc: Cập nhật trạng thái OFFLINE trong DB
+            end
+            UserSvc->>Redis: PUBLISH ride:ws_control {user_id}
+            Redis-->>WSGateway: ws-gateway nhận lệnh và ngắt kết nối WebSocket của user_id (nếu có)
+            UserSvc-->>Gateway: 200 OK
+            Gateway-->>Client: 200 OK (Đăng xuất thành công, token bị thu hồi)
         end
-        UserSvc->>WSGateway: Yêu cầu ngắt kết nối WebSocket của user_id (nếu đang mở)
-        UserSvc-->>Gateway: 200 OK
-        Gateway-->>Client: 200 OK (Đăng xuất thành công, token bị thu hồi)
     end
 ```
 
@@ -106,11 +114,11 @@ sequenceDiagram
   4. Lưu thông tin tài khoản vào `userdb` với trạng thái ban đầu:
      - Nếu là Khách hàng: Trạng thái `ACTIVE`.
      - Nếu là Tài xế: Trạng thái `ACTIVE`, trạng thái làm việc ban đầu là `OFFLINE`.
-  5. Hệ thống kích hoạt tạo ví ban đầu tại `payment-service`.
+  5. Ví thanh toán không tạo lúc này mà được khởi tạo tự động kiểu *lazy* với số dư 0 khi người dùng truy cập hoặc có giao dịch đầu tiên (xem UC-24 tại uc-05).
   6. Trả về thông báo đăng ký thành công kèm thông tin hồ sơ cơ bản.
 * **Luồng ngoại lệ:**
   - *Email hoặc số điện thoại đã tồn tại:* Trả về mã lỗi `USER_ALREADY_EXISTS` (HTTP 409).
-  - *Dữ liệu không hợp lệ (mật khẩu quá ngắn, thiếu trường):* Trả về lỗi Validation (HTTP 400).
+  - *Dữ liệu không hợp lệ (mật khẩu quá ngắn, thiếu trường bắt buộc):* Trả về mã lỗi `VALIDATION_ERROR` (HTTP 400).
 * **Hậu điều kiện:** Tài khoản mới được ghi nhận trong cơ sở dữ liệu.
 * **Dữ liệu demo cần thấy trên Postman:** ID người dùng, email/phone, họ tên, vai trò đăng ký (`CUSTOMER`/`DRIVER`).
 
@@ -136,19 +144,24 @@ sequenceDiagram
 ### UC-03: Xác thực & Phân quyền tại API Gateway
 * **FR liên quan:** `FR-03`
 * **Actor:** Hệ thống (`api-gateway`).
-* **Tiền điều kiện:** Request gửi tới Gateway có chứa header `Authorization: Bearer <token>`.
+* **Tiền điều kiện:** Request từ client gửi tới Gateway.
 * **Luồng chính:**
-  1. `api-gateway` nhận request từ client.
-  2. Bỏ qua kiểm tra JWT nếu endpoint nằm trong danh sách Public (đăng ký, đăng nhập, làm mới token, ước tính cước).
-  3. Giải mã JWT và xác thực chữ ký bằng Secret cấu hình trong ENV.
-  4. Kiểm tra thời hạn hết hạn (`exp`) của token.
-  5. Tra cứu khóa Redis `blacklist:<jti>`. Nếu không có trong blacklist:
-  6. Trích xuất `user_id` và `role`, gắn vào HTTP header nội bộ `X-User-Id` và `X-User-Role`.
-  7. Forward request an toàn sang microservice nghiệp vụ tương ứng.
+  1. `api-gateway` tiếp nhận request từ client. **Bảo mật header:** Xóa sạch mọi HTTP header dạng `X-User-*` do client tự gửi lên trước khi xử lý tiếp nhằm ngăn chặn giả mạo danh tính.
+  2. **Bảo vệ endpoint nội bộ:** Chặn tuyệt đối, không route các đường dẫn nội bộ `/internal/*` ra bên ngoài Internet.
+  3. **Kiểm tra endpoint công khai:** Danh sách endpoint công khai **chỉ bao gồm đúng 3 API**: Đăng ký (`POST /api/v1/auth/register`), Đăng nhập (`POST /api/v1/auth/login`), và Làm mới phiên (`POST /api/v1/auth/refresh`). Nếu request trỏ tới một trong 3 API này, Gateway cho phép đi qua mà không cần kiểm tra JWT.
+  4. Với mọi endpoint còn lại:
+     - Trích xuất JWT từ header `Authorization: Bearer <token>`. Nếu thiếu hoặc token sai định dạng/chữ ký $\rightarrow$ Từ chối.
+     - Kiểm tra thời hạn hết hạn (`exp`) của JWT.
+     - Tra cứu Redis kiểm tra token có nằm trong Blacklist `blacklist:<jti>` hay không.
+     - **Cơ chế Fail-Closed:** Khi Redis gặp sự cố kết nối hoặc lỗi truy vấn, Gateway bắt buộc phải từ chối request (fail-closed, trả về mã trạng thái HTTP 503; tên mã lỗi để LLD quyết định) để ngăn chặn rủi ro token đã thu hồi lọt qua.
+  5. Nếu token hợp lệ và không nằm trong Blacklist:
+     - Trích xuất `user_id` và `role`, gắn vào HTTP header nội bộ `X-User-Id` và `X-User-Role`.
+     - Forward request an toàn sang microservice nghiệp vụ tương ứng.
 * **Luồng ngoại lệ:**
   - *Thiếu token hoặc chữ ký không hợp lệ:* Trả về lỗi `UNAUTHORIZED` (HTTP 401).
   - *Token đã hết hạn:* Trả về lỗi `UNAUTHORIZED` (HTTP 401 - Token expired).
   - *Token đã bị đăng xuất (nằm trong Blacklist Redis):* Trả về lỗi `UNAUTHORIZED` (HTTP 401).
+  - *Redis gặp sự cố (Fail-closed):* Trả về mã trạng thái HTTP 503 (tên mã lỗi để LLD quyết định).
   - *Người dùng không đúng vai trò (ví dụ: Khách gọi API Admin):* Trả về lỗi `FORBIDDEN` (HTTP 403).
 * **Hậu điều kiện:** Service nội bộ nhận được request với định danh người dùng đã xác thực.
 
@@ -165,7 +178,7 @@ sequenceDiagram
   4. Nếu tài xế muốn chuyển sang `OFFLINE`: Kiểm tra tài xế không ở trạng thái `BUSY`. Cập nhật trạng thái `OFFLINE` trong DB.
   5. Trả về trạng thái làm việc mới của tài xế.
 * **Luồng ngoại lệ:**
-  - *Tài xế đang `BUSY` (đang có chuyến nhận/chở khách) yêu cầu chuyển sang `OFFLINE`:* Hệ thống từ chối và trả về mã lỗi `DRIVER_CANNOT_LOGOUT` / `DRIVER_BUSY` (HTTP 400).
+  - *Tài xế đang `BUSY` (đang có chuyến nhận/chở khách) yêu cầu chuyển sang `OFFLINE`:* Hệ thống từ chối và trả về mã lỗi `DRIVER_BUSY` (HTTP 400).
 * **Hậu điều kiện:** Trạng thái tài xế được cập nhật; ảnh hưởng đến khả năng được quét tìm xe trong `location-service`.
 * **Dữ liệu demo cần thấy trên Postman:** `driver_id`, trạng thái mới (`ONLINE` hoặc `OFFLINE`).
 
@@ -218,14 +231,14 @@ sequenceDiagram
 * **Tiền điều kiện:** Client sở hữu `refresh_token` nhận được từ lần đăng nhập hoặc lần refresh trước đó.
 * **Luồng chính:**
   1. Client gửi `refresh_token` trong body JSON lên Gateway (`POST /api/v1/auth/refresh`).
-  2. `user-service` tra cứu khóa `refresh:<token>` trong Redis.
+  2. `user-service` thực hiện kiểm tra và thu hồi `refresh_token` một cách nguyên tử trong Redis (thao tác single-use / chỉ dùng đúng 1 lần): tra cứu và xóa khóa `refresh:<token>`.
   3. Nếu tìm thấy và còn hạn:
-     - Xóa ngay lập tức token cũ khỏi Redis: `DEL refresh:<old_token>`.
      - Sinh `new_access_token` mới (mang `jti` mới, hạn 1 giờ).
      - Sinh `new_refresh_token` mới và lưu vào Redis: `SET refresh:<new_token> ... EX 7d`.
-  4. Trả về cặp Token mới cho Client.
+     - Trả về cặp Token mới cho Client.
 * **Luồng ngoại lệ:**
   - *Refresh token không hợp lệ, không tìm thấy hoặc đã qua sử dụng:* Trả về mã lỗi `INVALID_REFRESH_TOKEN` (HTTP 401). Client bắt buộc phải đăng nhập lại.
+  - *Đua lệnh đồng thời (Race condition):* Nếu có hai request đồng thời cùng gửi một `refresh_token`, cơ chế nguyên tử chỉ cho phép duy nhất một request thành công và được cấp token mới; request còn lại không tìm thấy token và nhận mã lỗi `INVALID_REFRESH_TOKEN` (HTTP 401).
 * **Hậu điều kiện:** Token cũ bị hủy vĩnh viễn, phiên làm việc được gia hạn an toàn.
 * **Dữ liệu demo cần thấy trên Postman:** Cặp token mới, `jti` mới khác hoàn toàn token cũ.
 
@@ -236,15 +249,17 @@ sequenceDiagram
 * **Actor:** Khách hàng, Tài xế, Quản trị viên (Admin).
 * **Tiền điều kiện:** Đang có phiên đăng nhập hợp lệ.
 * **Luồng chính:**
-  1. Client gửi request đăng xuất kèm `access_token` trên header và `refresh_token` trong body JSON.
-  2. Gateway/User Service kiểm tra:
+  1. Client gửi request đăng xuất kèm `access_token` trên header và `refresh_token` trong body JSON (`POST /api/v1/auth/logout`).
+  2. `user-service` kiểm tra:
      - Nếu là Tài xế: Kiểm tra trạng thái trong DB. Nếu tài xế đang `BUSY` (chưa xong chuyến) $\rightarrow$ Từ chối đăng xuất.
      - Nếu tài xế đang `ONLINE` $\rightarrow$ Tự động chuyển về `OFFLINE`.
-  3. Xóa `refresh_token` khỏi Redis (`DEL refresh:<token>`).
-  4. Lấy `jti` và thời gian còn lại của `access_token`, ghi vào Redis Blacklist: `SET blacklist:<jti> "revoked" EX <TTL_còn_lại>`.
-  5. Đóng kết nối WebSocket của người dùng tương ứng (nếu đang kết nối).
-  6. Trả về thông báo đăng xuất thành công (HTTP 200).
+  3. Kiểm tra tính sở hữu của `refresh_token`: Tra cứu Redis kiểm tra `refresh_token` có thuộc đúng `user_id` của người gọi hay không. Nếu không khớp hoặc không tồn tại, từ chối ngay với mã lỗi `INVALID_REFRESH_TOKEN` (HTTP 401).
+  4. Nếu khớp chủ sở hữu: Xóa `refresh_token` khỏi Redis (`DEL refresh:<token>`).
+  5. Lấy `jti` và thời gian còn lại của `access_token`, ghi vào Redis Blacklist: `SET blacklist:<jti> "revoked" EX <TTL_còn_lại>`.
+  6. Ngắt kết nối WebSocket: `user-service` phát thông điệp điều khiển vào Redis Pub/Sub trên kênh `ride:ws_control` chứa `{user_id}` (không gọi HTTP trực tiếp sang `ws-gateway`); `ws-gateway` lắng nghe kênh này và chủ động đóng kết nối WebSocket của người dùng đó (nếu đang kết nối).
+  7. Trả về thông báo đăng xuất thành công (HTTP 200).
 * **Luồng ngoại lệ:**
   - *Tài xế đang `BUSY` gọi đăng xuất:* Bị từ chối với mã lỗi `DRIVER_CANNOT_LOGOUT` (HTTP 400).
+  - *Refresh token không hợp lệ hoặc không thuộc về người gọi:* Trả về lỗi `INVALID_REFRESH_TOKEN` (HTTP 401).
   - *Token mang đi đăng xuất đã bị blacklist trước đó:* Trả về `UNAUTHORIZED` (HTTP 401).
-* **Hậu điều kiện:** Cả access token và refresh token đều bị vô hiệu hóa; WebSocket bị ngắt kết nối.
+* **Hậu điều kiện:** Cả access token và refresh token đều bị vô hiệu hóa; WebSocket bị ngắt kết nối an toàn.
