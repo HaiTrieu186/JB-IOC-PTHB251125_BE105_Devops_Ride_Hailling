@@ -15,7 +15,7 @@ Hai gateway publish dạng 127.0.0.1:PORT (không dùng 0.0.0.0, vì Docker có 
   KHÔNG đưa Nginx vào docker-compose. Sửa file cấu hình có sẵn (thêm location /ws/), không tạo lại từ đầu.
 - api-gateway: kiểm tra JWT, gắn header X-User-Id / X-User-Role rồi chuyển request.
   Các service nội bộ tin header này (mặc định, có thể đổi trong SRS).
-- ws-gateway: CHỈ để nhận GPS tài xế và đẩy thông báo xuống client. Hành động nghiệp vụ
+- ws-gateway: CHỈ để nhận GPS tài xế, đẩy thông báo xuống client, và chuyển tiếp tọa độ tài xế cho khách của chuyến (FR-38). Hành động nghiệp vụ
   (đặt xe, accept, complete...) đi qua REST qua api-gateway để dễ test bằng curl/Postman.
 - Giao tiếp đồng bộ: REST (client Go tự viết, gọi bằng tên service trong Docker). Bất đồng bộ: Redis Streams
   (sự kiện giữa service, consumer group + ACK) và Redis Pub/Sub (đẩy tin realtime tới ws-gateway).
@@ -48,9 +48,9 @@ Hai gateway publish dạng 127.0.0.1:PORT (không dùng 0.0.0.0, vì Docker có 
    → dispatch tìm tài xế rảnh gần nhất (bán kính X km) → gửi đề nghị cho tài xế.
 4. Chống 2 khách giành 1 tài xế: khóa nguyên tử bằng Redis (SET NX có TTL).
 5. State machine chuyến: CREATED → MATCHING → ACCEPTED → PICKING_UP → IN_TRIP → COMPLETED
-   (nhánh CANCELLED, và MATCHING hết giờ thì thất bại). Chỉ cho phép chuyển trạng thái hợp lệ.
+   (nhánh CANCELLED, và MATCHING hết giờ hoặc không có tài xế thì chuyển EXPIRED). Chỉ cho phép chuyển trạng thái hợp lệ.
 6. COMPLETED → dispatch phát sự kiện TripCompleted (Redis Stream) →
-   payment trừ ví khách + cộng ví tài xế (trừ hoa hồng); user cập nhật lịch sử; ai-service ghi số liệu.
+   payment trừ ví khách + cộng ví tài xế (trừ hoa hồng); ai-service ghi số liệu.
 7. ai-service: thống kê số chuyến, doanh thu, giờ cao điểm, tỷ lệ hủy; sinh nhận xét bằng LLM.
    Không có API key thì vẫn chạy bằng luật đơn giản.
    Surge: Demand = số yêu cầu đặt xe, Supply = số tài xế rảnh, tính theo khu vực/ô lưới (làm cực đơn giản).
@@ -102,7 +102,15 @@ Hai gateway publish dạng 127.0.0.1:PORT (không dùng 0.0.0.0, vì Docker có 
 - Deploy/CI: docker-expert, docker-compose, github-actions-templates, github-actions-debugger, deployment-procedures, linux-administration, prometheus-configuration
 - Kiểm tra/sửa lỗi: verification-before-completion, systematic-debugging
   Chỉ đọc skill khi giai đoạn hiện tại cần, không nạp hết cùng lúc.
-## Việc chưa chốt (hỏi người dùng khi viết SRS, đừng tự quyết)
-- Ví khách không đủ tiền thì xử lý thế nào (chặn lúc đặt xe, hay cho âm).
-- Ghép chuyến: gửi đề nghị lần lượt từng tài xế gần nhất (đề xuất: 15 giây mỗi người, tối đa 3 lần) hay gửi nhiều người cùng lúc.
-- Tỷ lệ hoa hồng (đề xuất 15%, đặt trong cấu hình) và có phạt khi hủy hay không (đề xuất: bỏ).
+## Thứ tự triển khai code
+> **Lưu ý:** Đây là thứ tự ưu tiên khi bắt tay vào code; tài liệu kỹ thuật (SRS, Use Case, LLD) vẫn được viết đầy đủ toàn bộ hệ thống từ đầu.
+
+- **Tầng 1 (Đủ điều kiện demo cốt lõi):**
+  - Toàn bộ FR mức "Bắt buộc" trừ `ai-service`, cộng thêm `FR-38` (stream vị trí tài xế cho khách) và `FR-36` (xem chuyến hiện tại và chi tiết chuyến).
+  - Đường luồng demo chính: Đăng ký → Đăng nhập → Nạp tiền ví ảo → Tài xế bật ONLINE gửi GPS → Khách tra ước tính cước → Đặt xe → Tài xế nhận chuyến → Hoàn thành cuốc → Kiểm tra số dư ví.
+  - Khi chưa triển khai `FR-31` (API quản lý bảng giá của Admin), các tham số đơn giá (`BaseFare`, `PricePerKm`) và ngưỡng surge $T$ được đọc mặc định từ biến môi trường (ENV); `FR-31` chỉ bổ sung tính năng cập nhật động lúc runtime.
+- **Tầng 2 (Sau khi Deploy VPS và CI/CD hoạt động ổn định):**
+  - Triển khai `ai-service`: `FR-27` (thu thập số liệu vận hành từ Redis Streams) và `FR-28` (báo cáo và nhận xét AI / Heuristic Rule).
+- **Tầng 3 (Nếu còn thời gian tối ưu):**
+  - Các tính năng mở rộng: `FR-05` (hồ sơ cá nhân), `FR-06` (phương tiện tài xế), `FR-31` (API bảng giá Admin), `FR-32` (xem dữ liệu vận hành Admin), `FR-37` (Admin hủy cưỡng bức).
+  - Các tính năng làm kèm cùng lúc vì chi phí triển khai thấp: `FR-30` (khởi tạo Admin từ ENV), `FR-34` (đăng xuất & blacklist Redis), `FR-35` (thông báo đổi trạng thái chuyến qua WS).
