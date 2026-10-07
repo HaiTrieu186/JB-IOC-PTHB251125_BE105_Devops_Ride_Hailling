@@ -27,8 +27,8 @@ sequenceDiagram
         PaymentWorker->>DB: Giao dịch DB: Khóa ví khách & tài xế (Khởi tạo lazy nếu chưa tồn tại)
         
         alt Bất thường: Số dư ví < fare (Không đủ tiền)
-            PaymentWorker->>DB: INSERT transaction {trip_id, user_id: customer_id, type: 'TRIP_PAYMENT', amount: 0, status: 'FAILED', note: 'INSUFFICIENT_FUNDS_ON_COMPLETE'}
-            Note over PaymentWorker,DB: TUYỆT ĐỐI KHÔNG TRỪ ÂM VÍ. Ghi log cảnh báo can thiệp thủ công!<br>(FAILED là trạng thái của dòng giao dịch)
+            PaymentWorker->>DB: INSERT transaction {trip_id, user_id: customer_id, type: 'TRIP_PAYMENT', amount: -fare, status: 'FAILED', note: 'INSUFFICIENT_FUNDS_ON_COMPLETE'}
+            Note over PaymentWorker,DB: TUYỆT ĐỐI KHÔNG TRỪ ÂM VÍ. Mọi phép tổng hợp tiền chỉ tính dòng status = SUCCESS.<br>(FAILED là trạng thái của dòng giao dịch)
             PaymentWorker->>RedisStreams: XACK stream:trip_events payment-group <message_id>
         else Số dư ví đủ chi trả (Bình thường)
             Note over PaymentWorker,DB: Thực thi trong một giao dịch DB duy nhất:<br>1. Trừ ví khách (-fare, VND số nguyên)<br>2. Hoa hồng = round(fare * 0.15)<br>3. Tài xế nhận = fare - Hoa hồng<br>4. Cộng ví tài xế (+DriverIncome)<br>5. Ghi 3 dòng giao dịch riêng biệt, duy nhất theo (trip_id, type)
@@ -117,7 +117,7 @@ sequenceDiagram
   - *Số dư ví khách hàng $< \text{fare}$ lúc trừ:*
     - **Quy tắc cốt lõi:** Hệ thống **tuyệt đối không bao giờ để số dư ví bị âm**.
     - Không thực hiện trừ tiền ví khách và không cộng tiền cho tài xế.
-    - Ghi nhận 1 bản ghi giao dịch với loại `TRIP_PAYMENT` và trạng thái `FAILED`: `{trip_id, user_id: customer_id, type: 'TRIP_PAYMENT', amount: 0, status: 'FAILED', note: 'INSUFFICIENT_FUNDS_ON_COMPLETE'}`. Lưu ý: `FAILED` là trạng thái của dòng giao dịch trong DB để theo dõi nội bộ. Nhận lại event thì bỏ qua và `XACK`, không ghi trùng.
+    - Ghi nhận 1 bản ghi giao dịch với loại `TRIP_PAYMENT` và trạng thái `FAILED`: `{trip_id, user_id: customer_id, type: 'TRIP_PAYMENT', amount: -fare, status: 'FAILED', note: 'INSUFFICIENT_FUNDS_ON_COMPLETE'}` (khớp quy ước dòng `TRIP_PAYMENT` luôn mang số âm). Mọi phép tổng hợp tiền chỉ tính dòng `status = 'SUCCESS'`. Lưu ý: `FAILED` là trạng thái của dòng giao dịch trong DB để theo dõi nội bộ. Nhận lại event thì bỏ qua và `XACK`, không ghi trùng.
     - Ghi log nghiêm trọng mức `ERROR` để người quản trị xử lý can thiệp thủ công (tình huống bất thường vì UC-17 đã kiểm tra số dư lúc đặt xe).
     - Commit bản ghi thất bại và gửi lệnh `XACK` để tránh consumer bị treo vòng lặp vô tận.
 * **Hậu điều kiện:** Tiền cước được thanh toán đầy đủ; hoa hồng 15% được khấu trừ chuẩn xác; 3 dòng giao dịch được ghi nhận nguyên tử trong 1 transaction DB duy nhất.

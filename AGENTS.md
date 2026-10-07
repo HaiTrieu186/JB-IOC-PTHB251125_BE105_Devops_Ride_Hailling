@@ -35,7 +35,7 @@ Hai gateway publish dạng 127.0.0.1:PORT (không dùng 0.0.0.0, vì Docker có 
 |---|---|
 | api-gateway, ws-gateway | Không có DB (Redis nếu cần) |
 | user-service | Postgres: userdb (tài khoản, hồ sơ tài xế, trạng thái ONLINE/OFFLINE/BUSY) |
-| location-service | Redis GEO (vị trí mới nhất); Postgres: locationdb chỉ khi cần lưu lịch sử |
+| location-service | Redis GEO (vị trí mới nhất); không có Postgres (SRS FR-10 đã bỏ qua, không tạo locationdb) |
 | dispatch-service | Postgres: dispatchdb (chuyến đi, lịch sử trạng thái) |
 | pricing-service | Postgres: pricingdb (bảng giá) + cache Redis |
 | payment-service | Postgres: paymentdb (ví, giao dịch) |
