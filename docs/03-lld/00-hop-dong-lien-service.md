@@ -126,10 +126,12 @@ Mọi sự kiện trong `stream:trip_events` đều có trường `type` tương
 | `OSRM_BASE_URL` | `https://router.project-osrm.org` | `pricing-service` | URL dịch vụ định tuyến OSRM công cộng (Fallback Haversine nếu lỗi). |
 | `OSRM_TIMEOUT_MS` | `400` | `pricing-service` | Timeout tối đa khi gọi định tuyến OSRM (ms). |
 | `LLM_API_KEY` | `""` | `ai-service` | Khóa API dịch vụ trí tuệ nhân tạo (nếu rỗng tự động chạy Heuristic Rule). |
+| `LLM_API_URL` | `https://generativelanguage.googleapis.com/v1beta` | `ai-service` | URL gốc của Google Gemini API. |
+| `LLM_MODEL` | `gemini-3.5-flash-lite` | `ai-service` | Tên model Gemini (nhà cung cấp là Google Gemini; tên model có thể đổi qua ENV mà không sửa code). |
 | `LLM_TIMEOUT_SECONDS` | `10` | `ai-service` | Thời gian chờ tối đa khi gọi LLM ngoại vi trước khi Fallback sang Rule. |
 | `ADMIN_EMAIL` | `admin@ridehailing.local` | `user-service` | Email tài khoản quản trị viên khởi tạo tự động lúc start container (UC-07). |
 | `ADMIN_PASSWORD` | `Admin@123456` | `user-service` | Mật khẩu tài khoản quản trị viên khởi tạo ban đầu. |
 | `REDIS_ADDR` | `redis:6379` | Toàn bộ 8 services | Địa chỉ kết nối Redis container trong mạng Docker. |
 | `REDIS_PASSWORD` | `redis_secret_pass` | Toàn bộ 8 services | Mật khẩu xác thực kết nối Redis. |
 
-*Ghi chú: JWT_SECRET, REDIS_PASSWORD, ADMIN_EMAIL, ADMIN_PASSWORD mặc định chỉ là giá trị demo, phải ghi đè trong .env, không commit.*
+*Ghi chú: JWT_SECRET, REDIS_PASSWORD, ADMIN_EMAIL, ADMIN_PASSWORD mặc định chỉ là giá trị demo, phải ghi đè trong .env, không commit. Nhà cung cấp LLM là Google Gemini; tên model có thể đổi qua ENV mà không sửa code.*

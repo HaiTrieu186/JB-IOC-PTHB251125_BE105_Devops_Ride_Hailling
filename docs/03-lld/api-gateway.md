@@ -123,7 +123,7 @@ Gồm đủ **26 endpoint công khai** của hệ thống và endpoint `/health`
 | `PRICING_SERVICE_URL` | `http://pricing-service:8004` | Base URL gọi nội bộ `pricing-service`. |
 | `PAYMENT_SERVICE_URL` | `http://payment-service:8005` | Base URL gọi nội bộ `payment-service`. |
 | `AI_SERVICE_URL` | `http://ai-service:8006` | Base URL gọi nội bộ `ai-service`. |
-| `PROXY_TIMEOUT_MS` | `10000` | Timeout tối đa khi proxy request sang service nội bộ (ms, đặt 10000 vì POST /trips có thể gọi tuần tự pricing, payment, location, user). |
+| `PROXY_TIMEOUT_MS` | `15000` | Timeout tối đa khi proxy request sang service nội bộ (ms, đặt 15000 vì (a) POST /trips có thể gọi tuần tự pricing, payment, location, user; (b) GET /api/v1/admin/reports có thể chờ Gemini tối đa LLM_TIMEOUT_SECONDS (10 giây) rồi fallback RULE_BASED, nên timeout của gateway phải lớn hơn timeout LLM cộng thời gian truy vấn DB). |
 
 ### 7.2. Tài nguyên & Thứ tự khởi động
 - **Ràng buộc bộ nhớ VPS 1GB:** `mem_limit` Docker đề xuất: 25 MB; `GOMEMLIMIT = 22MiB` (chống OOM).
