@@ -1,6 +1,6 @@
 # HỢP ĐỒNG GIAO TIẾP LIÊN SERVICE (INTER-SERVICE CONTRACT)
 
-> **Mã tài liệu:** `LLD-00` | **Phiên bản:** 1.0  
+> **Mã tài liệu:** `LLD-00` | **Phiên bản:** 1.1  
 > **Tài liệu căn cứ:** [AGENTS.md](../../AGENTS.md), [SRS v1.5](../01-srs/srs.md), [Use Cases v1.1](../02-use-cases/00-use-case-tong-quat.md), [Quyết định chốt](../00-brainstorm/quyet-dinh.md)  
 > **Nguyên tắc cốt lõi:** Văn bản duy nhất chuẩn hóa giao tiếp liên microservice; cấm vi phạm ranh giới Database-per-Service.
 
@@ -60,14 +60,14 @@ flowchart TD
 
 ## 3. BẢN TIN SỰ KIỆN TRONG STREAM:TRIP_EVENTS
 
-Mọi sự kiện đều chứa trường phiên bản `version: "1.0"` và thời gian chuẩn UTC (RFC 3339 / ISO 8601). Tuyệt đối **không** gửi trường hoa hồng trong `TripCompleted` và **không** gửi trường bên hủy (`cancelled_by`) trong `TripCancelled`.
+Mọi sự kiện trong `stream:trip_events` đều có trường `type` tương ứng với tên sự kiện (`TripCreated` | `TripCompleted` | `TripCancelled` | `TripExpired`), trường phiên bản `version: "1.0"` và thời gian chuẩn UTC (RFC 3339 / ISO 8601). Tuyệt đối **không** gửi trường hoa hồng trong `TripCompleted` và **không** gửi trường bên hủy (`cancelled_by`) trong `TripCancelled`.
 
 | Tên sự kiện | Trường bắt buộc | Service phát | Consumer Group tiếp nhận | Mục đích nghiệp vụ |
 | :--- | :--- | :--- | :--- | :--- |
-| `TripCreated` | `version`, `trip_id`, `customer_id`, `pickup_geohash5`, `created_at` | `dispatch-service` | `pricing-group`, `ai-group` | Tích lũy Demand tính Surge Pricing (`pricing`); thống kê số chuyến tạo (`ai`). |
-| `TripCompleted` | `version`, `trip_id`, `customer_id`, `driver_id`, `fare`, `completed_at` | `dispatch-service` | `payment-group`, `ai-group` | Khấu trừ ví khách, cộng ví tài xế (`payment`); ghi nhận doanh thu & hoa hồng (`ai`). |
-| `TripCancelled` | `version`, `trip_id`, `cancelled_at` | `dispatch-service` | `ai-group` | Ghi nhận thống kê tỷ lệ hủy chuyến toàn hệ thống. |
-| `TripExpired` | `version`, `trip_id`, `reason`, `expired_at`<br>*(reason: `NO_DRIVERS_AVAILABLE` \| `TIMEOUT_30S`)* | `dispatch-service` | `ai-group` | Ghi nhận thống kê tỷ lệ hết giờ tìm xe toàn hệ thống. |
+| `TripCreated` | `type`, `version`, `trip_id`, `customer_id`, `pickup_geohash5`, `created_at` | `dispatch-service` | `pricing-group`, `ai-group` | Tích lũy Demand tính Surge Pricing (`pricing`); thống kê số chuyến tạo (`ai`). |
+| `TripCompleted` | `type`, `version`, `trip_id`, `customer_id`, `driver_id`, `fare`, `completed_at` | `dispatch-service` | `payment-group`, `ai-group` | Khấu trừ ví khách, cộng ví tài xế (`payment`); ghi nhận doanh thu & hoa hồng (`ai`). |
+| `TripCancelled` | `type`, `version`, `trip_id`, `cancelled_at` | `dispatch-service` | `ai-group` | Ghi nhận thống kê tỷ lệ hủy chuyến toàn hệ thống. |
+| `TripExpired` | `type`, `version`, `trip_id`, `reason`, `expired_at`<br>*(reason: `NO_DRIVERS_AVAILABLE` \| `TIMEOUT_30S`)* | `dispatch-service` | `ai-group` | Ghi nhận thống kê tỷ lệ hết giờ tìm xe toàn hệ thống. |
 
 *Ghi chú: pickup_geohash5 do dispatch tính từ tọa độ điểm đón bằng geohash chuẩn độ dài 5 (pricing dùng cùng chuẩn khi tính Supply).*
 
@@ -80,13 +80,14 @@ Mọi sự kiện đều chứa trường phiên bản `version: "1.0"` và th�
 - **Bảo mật Header:** `api-gateway` xóa sạch header `X-User-*` từ client; giải mã JWT hợp lệ rồi gắn `X-User-Id` và `X-User-Role` chuyển tiếp vào nội bộ.
 - **Payload JWT Claims:** Gồm đúng 4 trường: `user_id` (UUID/string), `role` (`CUSTOMER` | `DRIVER` | `ADMIN`), `exp` (int64 epoch), `jti` (UUID).
 - **Đơn vị tiền tệ & thời gian:** Tiền tệ là số nguyên VND (`int64`, không dùng số thực). Thời gian là chuỗi ISO 8601 UTC (`YYYY-MM-DDTHH:MM:SSZ`).
-- **Danh mục mã lỗi nghiệp vụ chuẩn:** Sử dụng đúng 14 mã lỗi từ Use Case tổng quát, bổ sung duy nhất mã lỗi `SERVICE_UNAVAILABLE` (HTTP 503):
+- **Danh mục mã lỗi nghiệp vụ chuẩn:** Gồm 16 mã lỗi chuẩn toàn hệ thống (14 mã lỗi từ Use Case tổng quát, bổ sung mã `NOT_FOUND` (HTTP 404) và `SERVICE_UNAVAILABLE` (HTTP 503)):
   - `400`: `VALIDATION_ERROR`, `INSUFFICIENT_BALANCE`, `DRIVER_NOT_AVAILABLE`, `DRIVER_BUSY`, `DRIVER_CANNOT_LOGOUT`, `INVALID_TRIP_STATUS`.
   - `401`: `UNAUTHORIZED`, `INVALID_REFRESH_TOKEN`.
   - `403`: `FORBIDDEN`, `NOT_OFFERED`.
-  - `404`: `TRIP_NOT_FOUND`.
+  - `404`: `TRIP_NOT_FOUND`, `NOT_FOUND` (dùng cho route không tồn tại và đường dẫn `/internal/*` từ Internet).
   - `409`: `USER_ALREADY_EXISTS`, `ACTIVE_TRIP_EXISTS`, `TRIP_ALREADY_TAKEN`.
-  - `503`: `SERVICE_UNAVAILABLE` (api-gateway hoặc ws-gateway lỗi Redis (ws-gateway: từ chối bắt tay WebSocket bằng HTTP 503, không nâng cấp kết nối), hoặc service gọi đồng bộ (dispatch) không nhận được phản hồi từ service phụ thuộc (pricing, payment, location, user)).
+  - `503`: `SERVICE_UNAVAILABLE` (api-gateway hoặc ws-gateway lỗi Redis (ws-gateway: từ chối bắt tay WebSocket bằng HTTP 503, không nâng cấp kết nối), hoặc ws-gateway từ chối bắt tay do vượt MAX_CONNECTIONS, hoặc service gọi đồng bộ (dispatch) không nhận được phản hồi từ service phụ thuộc (pricing, payment, location, user)).
+- **Quy tắc lỗi hạ tầng:** Lỗi DB/Redis của chính service ngoài các luồng đã định nghĩa trả 503 `SERVICE_UNAVAILABLE`.
 - **Công thức tính hoa hồng cố định:** Hoa hồng không truyền trong event; payment-service và ai-service tự tính độc lập từ `fare` chốt khi hoàn thành. `COMMISSION_RATE` do payment-service, ai-service và dispatch-service đọc (dispatch chỉ để hiển thị driver_fare). `COMMISSION_RATE` là số nguyên phần trăm (mặc định 15). Phép tính thực hiện hoàn toàn trên số nguyên với cơ chế làm tròn nửa lên:
   $$\text{commission} = \frac{\text{fare} \times \text{COMMISSION\_RATE} + 50}{100} \quad (\text{chia lấy phần nguyên})$$
   $$\text{DriverIncome} = \text{fare} - \text{commission}$$
@@ -101,7 +102,7 @@ Mọi sự kiện đều chứa trường phiên bản `version: "1.0"` và th�
 - **(d) Tiến trình quét chuyến quá hạn:** Chạy ngầm tại `dispatch-service` định kỳ mỗi 2 giây và chạy quét ngay 1 lần lúc service khởi động để giải phóng các chuyến kẹt.
 - **(e) Phạm vi địa lý Demand/Supply:** Chỉ tính toán trong phạm vi duy nhất 1 ô Geohash độ dài 5 ký tự (khoảng 4.9 km × 4.9 km), không quét thêm 8 ô lân cận.
 - **(f) Tài xế BUSY mồ côi (Orphaned BUSY Driver):** Trường hợp hy hữu `dispatch-service` sập nguồn giữa lúc đổi tài xế `BUSY` và update `ACCEPTED` chuyến, tài xế kẹt `BUSY` sẽ reset thủ công trạng thái tài xế về ONLINE trong userdb, ghi vào mục vận hành.
-- **(g) Giới hạn bộ nhớ Redis:** Cấu hình `maxmemory 50mb` (thấp hơn `mem_limit: 60M` của container 10 MB) kèm chính sách `maxmemory-policy noeviction` để tránh mất mát dữ liệu hàng đợi.
+- **(g) Giới hạn bộ nhớ và phiên bản Redis:** Redis `maxmemory 50mb`, `mem_limit` container Redis là 60M, `maxmemory-policy noeviction`. Yêu cầu Redis >= 6.2 (cần cho `GEOSEARCH` và `GETDEL`), ví dụ dùng image `redis:7-alpine`.
 - **(h) Giới hạn Connection Pool & Bộ nhớ Go:**
   - Container PostgreSQL dùng chung cấu hình `max_connections = 50`.
   - Connection Pool từng service Go: `user-service` (MaxOpen: 5, MaxIdle: 2), `dispatch-service` (MaxOpen: 10, MaxIdle: 3), `pricing-service` (MaxOpen: 5, MaxIdle: 2), `payment-service` (MaxOpen: 10, MaxIdle: 3), `ai-service` (MaxOpen: 5, MaxIdle: 2). (Tổng: 35 connections ≤ 50).

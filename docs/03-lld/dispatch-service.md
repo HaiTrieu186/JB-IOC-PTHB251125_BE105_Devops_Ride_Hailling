@@ -38,7 +38,7 @@
 | `cancel_reason` | `TEXT` | NULLABLE | Lý do hủy cuốc hoặc lý do force-cancel. |
 | `created_at` / `updated_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` | Thời gian tạo và cập nhật bản ghi UTC. |
 
-- **Chỉ mục & Ràng buộc toàn vẹn:**
+- **Chỉ mục & Ràng buộc toàn vẹn:** Các partial index tạo bằng SQL migration thô hoặc GORM tag where.
   - `idx_trips_active_customer`: `CREATE UNIQUE INDEX ... ON trips (customer_id) WHERE status IN ('CREATED', 'MATCHING', 'ACCEPTED', 'PICKING_UP', 'IN_TRIP')` (Ngăn chặn triệt để 2 chuyến active đồng thời của 1 khách).
   - `idx_trips_matching_timeout`: `CREATE INDEX ... ON trips (matching_expires_at) WHERE status = 'MATCHING'` (Tối ưu worker quét quá hạn 2s/lần).
   - `idx_trips_customer_lookup`: `CREATE INDEX ... ON trips (customer_id, status)` (Tra cứu chuyến hiện tại của khách).
@@ -99,7 +99,7 @@ Toàn bộ request/response sử dụng định dạng JSON thống nhất theo 
    - Nếu vi phạm partial index `idx_trips_active_customer` $\rightarrow$ Rollback DB, trả lỗi `ACTIVE_TRIP_EXISTS` (409).
    - Chèn 2 dòng vào `status_timeline` trong cùng transaction: dòng 1 `status = 'CREATED'`, tiếp theo dòng 2 `status = 'MATCHING'`. Commit transaction.
 6. **Phát sự kiện tạo chuyến:** Ghi vào Redis Stream:
-   `XADD stream:trip_events * version "1.0" trip_id <id> customer_id <cid> pickup_geohash5 <geo5> created_at <utc>`.
+   `XADD stream:trip_events MAXLEN ~ 5000 * type TripCreated version "1.0" trip_id <id> customer_id <cid> pickup_geohash5 <geo5> created_at <utc>`.
    Nếu `XADD` lỗi $\rightarrow$ chỉ log `WARN` và tiếp tục luồng.
 7. **Tìm kiếm & Ghép tài xế:**
    - Gọi `POST /internal/v1/locations/candidates` với `radius_km = OFFER_RADIUS_KM` (mặc định 5 km) lấy ~20 tài xế có GPS $\le 15\text{s}$.
@@ -108,14 +108,14 @@ Toàn bộ request/response sử dụng định dạng JSON thống nhất theo 
    - **Xử lý lỗi phụ thuộc:** Nếu gọi `location-service` hoặc `user-service` bị lỗi/timeout (sau khi đã INSERT):
      - `UPDATE trips SET status = 'EXPIRED', updated_at = now() WHERE id = <trip_id> AND status = 'MATCHING'`.
      - Ghi `status_timeline` (`status = 'EXPIRED'`, `note = 'NO_DRIVERS_AVAILABLE'`).
-     - `XADD stream:trip_events * version "1.0" trip_id <id> reason "NO_DRIVERS_AVAILABLE" expired_at <utc>`.
+     - `XADD stream:trip_events MAXLEN ~ 5000 * type TripExpired version "1.0" trip_id <id> reason "NO_DRIVERS_AVAILABLE" expired_at <utc>`.
      - `PUBLISH ride:trip_updates {"trip_id": "<id>", "customer_id": "<cid>", "driver_id": null, "status": "EXPIRED", "updated_at": "<utc>"}`.
      - Trả HTTP 503 `SERVICE_UNAVAILABLE`.
 8. **Phân nhánh kết quả:**
    - **Nhánh không có tài xế (0 ONLINE, không lỗi):**
      - Cập nhật DB: `UPDATE trips SET status = 'EXPIRED', updated_at = now() WHERE id = <trip_id> AND status = 'MATCHING'`.
      - Ghi `status_timeline` (`status = 'EXPIRED'`, `note = 'NO_DRIVERS_AVAILABLE'`).
-     - `XADD stream:trip_events * version "1.0" trip_id <id> reason "NO_DRIVERS_AVAILABLE" expired_at <utc>`.
+     - `XADD stream:trip_events MAXLEN ~ 5000 * type TripExpired version "1.0" trip_id <id> reason "NO_DRIVERS_AVAILABLE" expired_at <utc>`.
      - `PUBLISH ride:trip_updates {"trip_id": "<id>", "customer_id": "<cid>", "driver_id": null, "status": "EXPIRED", "updated_at": "<utc>"}`.
      - Trả về `201 Created` với `status = "EXPIRED"`.
    - **Nhánh có tài xế (Top 1..5):**
@@ -205,7 +205,7 @@ sequenceDiagram
     - Nếu trạng thái khác `IN_TRIP` $\rightarrow$ Trả `INVALID_TRIP_STATUS` (400).
   - Nếu thành công (1 dòng), thực hiện tuần tự theo quy tắc best-effort sau commit (bước phụ lỗi chỉ log `ERROR` và vẫn trả 200 OK):
     1. Ghi dòng `COMPLETED` vào `status_timeline`.
-    2. `XADD stream:trip_events * version "1.0" trip_id <id> customer_id <cid> driver_id <did> fare <fare> completed_at <utc>` (*tuyệt đối không gửi commission*).
+    2. `XADD stream:trip_events MAXLEN ~ 5000 * type TripCompleted version "1.0" trip_id <id> customer_id <cid> driver_id <did> fare <fare> completed_at <utc>` (*tuyệt đối không gửi commission*).
     3. `DEL trip:link:<driver_id>`.
     4. Gọi nội bộ `user-service`: `POST /internal/v1/drivers/:id/status` với `from_status: "BUSY", to_status: "ONLINE"` để giải phóng tài xế.
     5. `PUBLISH ride:trip_updates {"trip_id":"...","customer_id":"...","driver_id":"...","status":"COMPLETED","updated_at":"<utc>"}`.
@@ -224,7 +224,7 @@ sequenceDiagram
 - **Xử lý sau hủy thành công (1 dòng affected, best-effort sau commit):**
   1. Ghi `status_timeline` (`status = 'CANCELLED'`).
   2. Dựa vào `driver_id` trả về: nếu khác null $\rightarrow$ `DEL trip:link:<driver_id>`, và gọi `user-service`: `POST /internal/v1/drivers/:id/status` (`from_status: "BUSY", to_status: "ONLINE"`).
-  3. `XADD stream:trip_events * version "1.0" trip_id <id> cancelled_at <utc>` (*tuyệt đối không gửi cancelled_by*).
+  3. `XADD stream:trip_events MAXLEN ~ 5000 * type TripCancelled version "1.0" trip_id <id> cancelled_at <utc>` (*tuyệt đối không gửi cancelled_by*).
   4. `PUBLISH ride:trip_updates {"trip_id":"...","customer_id":<customer_id>,"driver_id":<driver_id_hoặc_null>,"status":"CANCELLED","updated_at":"<utc>"}`.
   5. Trả 200 OK.
 
@@ -235,7 +235,7 @@ sequenceDiagram
      `UPDATE trips SET status = 'EXPIRED', updated_at = now() WHERE status = 'MATCHING' AND matching_expires_at <= now() RETURNING id, customer_id;`
   2. Duyệt từng dòng trả về:
      - Ghi nhận `status_timeline` (`status = 'EXPIRED'`, `note = 'TIMEOUT_30S'`).
-     - `XADD stream:trip_events * version "1.0" trip_id <id> reason "TIMEOUT_30S" expired_at <utc>`.
+     - `XADD stream:trip_events MAXLEN ~ 5000 * type TripExpired version "1.0" trip_id <id> reason "TIMEOUT_30S" expired_at <utc>`.
      - `PUBLISH ride:trip_updates {"trip_id": "<id>", "customer_id": "<cid>", "driver_id": null, "status": "EXPIRED", "updated_at": "<utc>"}`.
 
 ---
@@ -272,10 +272,10 @@ sequenceDiagram
   `{"trip_id": "<id>", "customer_id": "<cid>", "driver_id": "<did_hoặc_null>", "status": "<STATUS>", "updated_at": "<utc>"}`.
 
 ### 6.3. Sự kiện Redis Stream phát đi (`stream:trip_events`)
-- `TripCreated`: `version="1.0"`, `trip_id`, `customer_id`, `pickup_geohash5`, `created_at`.
-- `TripCompleted`: `version="1.0"`, `trip_id`, `customer_id`, `driver_id`, `fare`, `completed_at` *(không có commission)*.
-- `TripCancelled`: `version="1.0"`, `trip_id`, `cancelled_at` *(không có cancelled_by)*.
-- `TripExpired`: `version="1.0"`, `trip_id`, `reason` (`NO_DRIVERS_AVAILABLE` | `TIMEOUT_30S`), `expired_at`.
+- `TripCreated`: `type` ("TripCreated"), `version="1.0"`, `trip_id`, `customer_id`, `pickup_geohash5`, `created_at`.
+- `TripCompleted`: `type` ("TripCompleted"), `version="1.0"`, `trip_id`, `customer_id`, `driver_id`, `fare`, `completed_at` *(không có commission)*.
+- `TripCancelled`: `type` ("TripCancelled"), `version="1.0"`, `trip_id`, `cancelled_at` *(không có cancelled_by)*.
+- `TripExpired`: `type` ("TripExpired"), `version="1.0"`, `trip_id`, `reason` (`NO_DRIVERS_AVAILABLE` | `TIMEOUT_30S`), `expired_at`.
 
 ---
 
