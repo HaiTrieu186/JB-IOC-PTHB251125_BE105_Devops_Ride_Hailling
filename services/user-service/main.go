@@ -1,83 +1,83 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
+
+	"user-service/internal/config"
+	"user-service/internal/controller"
+	"user-service/internal/exception"
+	"user-service/internal/middleware"
+	repoImpl "user-service/internal/repository/impl"
+	"user-service/internal/router"
+	serviceImpl "user-service/internal/service/impl"
 
 	"github.com/gofiber/fiber/v2"
 )
 
 func main() {
-	// Khởi tạo logger JSON ra stdout theo quy ước hệ thống
+	// Logger JSON ra stdout
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
 	slog.Info("starting user-service...")
 
-	cfg := loadConfig()
+	cfg := config.LoadConfig()
 
-	// 1. Khởi tạo DB & Migration
-	db, err := initDB(cfg)
+	// 1. Kết nối DB và Redis qua impl
+	db, err := repoImpl.InitDB(cfg)
 	if err != nil {
 		slog.Error("database initialization failed", "error", err)
 		os.Exit(1)
 	}
 
-	// 2. Khởi tạo Redis
-	rdb, err := initRedis(cfg)
+	rdb, err := repoImpl.InitRedis(cfg)
 	if err != nil {
 		slog.Error("redis initialization failed", "error", err)
 		os.Exit(1)
 	}
 
-	// 3. Khởi tạo Admin tự động (FR-30, Idempotent)
-	if err := seedAdmin(db, cfg); err != nil {
+	// 2. Khởi tạo Repositories
+	userRepo := repoImpl.NewUserRepository(db)
+	tokenRepo := repoImpl.NewTokenRepository(rdb)
+	wsPublisher := repoImpl.NewWSControlPublisher(rdb)
+
+	// 3. Khởi tạo Services
+	authService := serviceImpl.NewAuthService(userRepo, tokenRepo, wsPublisher, cfg)
+	driverService := serviceImpl.NewDriverService(userRepo)
+
+	// 4. Seed Admin tự động (FR-30, Idempotent)
+	if err := authService.SeedAdmin(context.Background()); err != nil {
 		slog.Error("admin seeding failed", "error", err)
 		os.Exit(1)
 	}
 
+	// 5. Khởi tạo Controllers
+	healthCtrl := controller.NewHealthController()
+	authCtrl := controller.NewAuthController(authService)
+	driverCtrl := controller.NewDriverController(driverService)
+	internalCtrl := controller.NewInternalController(driverService)
+
+	// 6. Cấu hình Fiber App với ErrorHandler duy nhất
 	app := fiber.New(fiber.Config{
 		DisableStartupMessage: true,
+		ErrorHandler:          exception.CustomErrorHandler,
 	})
 
-	// JSON request logging middleware
-	app.Use(func(c *fiber.Ctx) error {
-		start := time.Now()
-		err := c.Next()
-		duration := time.Since(start)
+	app.Use(middleware.Logger())
 
-		slog.Info("http_request",
-			"method", c.Method(),
-			"path", c.Path(),
-			"status", c.Response().StatusCode(),
-			"duration_ms", duration.Milliseconds(),
-			"ip", c.IP(),
-		)
-		return err
-	})
+	// 7. Thiết lập Routes
+	router.SetupRoutes(app, healthCtrl, authCtrl, driverCtrl, internalCtrl)
 
-	handler := newAppHandler(db, rdb, cfg)
+	// In danh sách route thật đang đăng ký (đối chiếu LLD)
+	for _, r := range app.GetRoutes(true) {
+		slog.Info("registered route", "method", r.Method, "path", r.Path)
+	}
 
-	// Healthcheck
-	app.Get("/health", handler.Health)
-
-	// Public Auth & User Endpoints
-	api := app.Group("/api/v1")
-	api.Post("/auth/register", handler.Register)
-	api.Post("/auth/login", handler.Login)
-	api.Post("/auth/refresh", handler.Refresh)
-	api.Post("/auth/logout", handler.Logout)
-	api.Patch("/driver/status", handler.UpdateDriverStatus)
-
-	// Internal Endpoints
-	internal := app.Group("/internal/v1")
-	internal.Post("/users/filter-online", handler.FilterOnline)
-	internal.Post("/drivers/:id/status", handler.UpdateDriverInternalStatus)
-
-	// Graceful shutdown
+	// 8. Graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 

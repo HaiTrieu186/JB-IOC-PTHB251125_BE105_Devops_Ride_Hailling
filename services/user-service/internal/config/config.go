@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"os"
@@ -17,7 +17,7 @@ type Config struct {
 	AdminPassword      string
 }
 
-func loadConfig() *Config {
+func LoadConfig() *Config {
 	return &Config{
 		Port:               getEnv("PORT", "8001"),
 		DatabaseURL:        getEnv("DATABASE_URL", "postgres://user_user:user_pass@postgres:5432/userdb?sslmode=disable"),

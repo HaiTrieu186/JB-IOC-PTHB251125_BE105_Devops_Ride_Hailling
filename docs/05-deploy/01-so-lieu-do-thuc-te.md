@@ -22,20 +22,21 @@
 
 Đo kiểm sau khi chạy toàn bộ chuỗi kiểm thử nghiệp vụ (register, login, refresh, update status, filter-online, logout, restart container).
 
-### Kết quả `docker stats --no-stream`
+### Kết quả `docker stats --no-stream` (Sau tái cấu trúc phân lớp)
 
 | Container | CPU % | RAM Hiện tại (MEM USAGE) | Giới hạn (LIMIT) | Tỷ lệ RAM (MEM %) | NET I/O | BLOCK I/O | PIDs | Trạng thái |
 |---|---|---|---|---|---|---|---|---|
-| `user-service` | 1.89% | 6.47 MiB | 30 MiB | 21.58% | 14.6 kB / 17.6 kB | 0 B / 0 B | 12 | Healthy |
-| `postgres` | 2.33% | 28.51 MiB | 200 MiB | 14.25% | 41 kB / 24.5 kB | 3.74 MB / 1.9 MB | 7 | Healthy |
-| `redis` | 0.71% | 14.23 MiB | 60 MiB | 23.72% | 14.2 kB / 5.19 kB | 8.76 MB / 41 kB | 7 | Healthy |
-| **Tổng cộng** | - | **49.21 MiB** | **290 MiB** | - | - | - | 26 | - |
+| `user-service` | 0.05% | 7.04 MiB | 30 MiB | 23.48% | 43 kB / 27.7 kB | 0 B / 0 B | 12 | Healthy |
+| `postgres` | 0.00% | 38.82 MiB | 200 MiB | 19.41% | 44.1 kB / 25.3 kB | 31.7 MB / 130 MB | 7 | Healthy |
+| `redis` | 0.84% | 5.93 MiB | 60 MiB | 9.88% | 16.8 kB / 5.46 kB | 5.42 MB / 65.5 kB | 7 | Healthy |
+| **Tổng cộng** | - | **51.79 MiB** | **290 MiB** | - | - | - | 26 | - |
 
 ### Đánh giá & Khuyến nghị giới hạn tài nguyên
 
-- **Đánh giá `mem_limit` hiện tại (30 MB):** Hoàn toàn đủ và an toàn. `user-service` chỉ tiêu thụ ~6.47 MiB (~21.6% định mức 30 MB) kể cả sau các thao tác băm mật khẩu `bcrypt` và sinh/giải mã token JWT.
+- **Đánh giá `mem_limit` hiện tại (30 MB):** Sau khi tái cấu trúc sang kiến trúc phân lớp (Clean Architecture / Layered), `user-service` hoạt động ổn định ở mức ~7.04 MiB (~23.5% định mức 30 MB).
+- **Ghi chú tải trọng:** Đây là mức RAM lúc nhàn rỗi (idle); `mem_limit: 30MB` sẽ được đánh giá lại khi chạy kịch bản tải 100 tài xế ảo ở Lượt 10 vì thao tác băm mật khẩu `bcrypt` khi đăng nhập dồn dập có thể gây tăng đột biến CPU & RAM spike.
 - **Cấu hình `GOMEMLIMIT` (26MiB):** Hoạt động hiệu quả, kích hoạt dọn rác sớm giúp duy trì mức RAM ổn định. Giữ nguyên mức 30 MB hiện tại.
-- **Ngân sách RAM toàn hệ thống:** 49.21 MiB / 850 MiB (~5.8% ngân sách tối đa của VPS 1 GB).
+- **Ngân sách RAM toàn hệ thống:** 51.79 MiB / 850 MiB (~6.1% ngân sách tối đa của VPS 1 GB).
 
 ---
 

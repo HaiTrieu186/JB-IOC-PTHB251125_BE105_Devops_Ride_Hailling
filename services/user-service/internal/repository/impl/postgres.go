@@ -1,20 +1,19 @@
-package main
+package impl
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/redis/go-redis/v9"
-	"golang.org/x/crypto/bcrypt"
+	"user-service/internal/config"
+	"user-service/internal/entity"
+
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
 
-func initDB(cfg *Config) (*gorm.DB, error) {
+func InitDB(cfg *config.Config) (*gorm.DB, error) {
 	var db *gorm.DB
 	var err error
 
@@ -42,12 +41,10 @@ func initDB(cfg *Config) (*gorm.DB, error) {
 		return nil, fmt.Errorf("unable to connect to postgres after 10 attempts: %w", err)
 	}
 
-	// AutoMigrate tables
-	if err := db.AutoMigrate(&User{}, &Vehicle{}); err != nil {
+	if err := db.AutoMigrate(&entity.User{}, &entity.Vehicle{}); err != nil {
 		return nil, fmt.Errorf("automigrate failed: %w", err)
 	}
 
-	// Create index and constraints idempotently
 	rawQueries := []string{
 		`CREATE INDEX IF NOT EXISTS idx_users_role_status ON users (role, driver_status);`,
 		`DO $$
@@ -74,65 +71,4 @@ func initDB(cfg *Config) (*gorm.DB, error) {
 	}
 
 	return db, nil
-}
-
-func initRedis(cfg *Config) (*redis.Client, error) {
-	var rdb *redis.Client
-	var err error
-
-	for attempt := 1; attempt <= 10; attempt++ {
-		rdb = redis.NewClient(&redis.Options{
-			Addr:     cfg.RedisAddr,
-			Password: cfg.RedisPassword,
-		})
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		err = rdb.Ping(ctx).Err()
-		cancel()
-
-		if err == nil {
-			slog.Info("connected to redis successfully")
-			return rdb, nil
-		}
-		slog.Warn("failed to connect to redis, retrying...", "attempt", attempt, "max", 10, "error", err)
-		time.Sleep(3 * time.Second)
-	}
-
-	return nil, fmt.Errorf("unable to connect to redis after 10 attempts: %w", err)
-}
-
-func seedAdmin(db *gorm.DB, cfg *Config) error {
-	if cfg.AdminEmail == "" || cfg.AdminPassword == "" {
-		return nil
-	}
-
-	var existing User
-	err := db.Where("email = ?", cfg.AdminEmail).First(&existing).Error
-	if err == nil {
-		slog.Info("admin account already exists, skipping seed", "email", cfg.AdminEmail)
-		return nil
-	}
-
-	hash, err := bcrypt.GenerateFromPassword([]byte(cfg.AdminPassword), 10)
-	if err != nil {
-		return fmt.Errorf("failed to hash admin password: %w", err)
-	}
-
-	admin := User{
-		ID:           uuid.New(),
-		PhoneNumber:  nil,
-		Email:        &cfg.AdminEmail,
-		PasswordHash: string(hash),
-		FullName:     "Administrator",
-		Role:         "ADMIN",
-		DriverStatus: nil,
-		CreatedAt:    time.Now().UTC(),
-		UpdatedAt:    time.Now().UTC(),
-	}
-
-	if createErr := db.Create(&admin).Error; createErr != nil {
-		return fmt.Errorf("failed to insert admin user: %w", createErr)
-	}
-
-	slog.Info("seeded admin account successfully", "email", cfg.AdminEmail, "user_id", admin.ID)
-	return nil
 }
