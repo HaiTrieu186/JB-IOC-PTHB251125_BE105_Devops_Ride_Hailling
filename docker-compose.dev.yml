@@ -1,0 +1,15 @@
+# ==============================================================================
+# docker-compose.dev.yml (Override dành riêng cho môi trường Development nội bộ)
+# 
+# CHỈ DÙNG TRÊN MÁY DEV, KHÔNG ĐƯA LÊN VPS!
+# (Quy trình CI/CD deploy lên VPS chỉ scp docker-compose.yml + thư mục infra/, 
+# tuyệt đối không copy file này lên máy chủ production).
+#
+# Lệnh chạy:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+# ==============================================================================
+
+services:
+  user-service:
+    ports:
+      - "127.0.0.1:8001:8001"

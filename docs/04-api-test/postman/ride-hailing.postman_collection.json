@@ -1,0 +1,2208 @@
+{
+	"info": {
+		"_postman_id": "a7b3c2d1-e4f5-4a6b-8c9d-0e1f2a3b4c5d",
+		"name": "Ride-Hailing & Logistics API Test Suite",
+		"description": "Bộ kiểm thử API toàn diện cho hệ thống microservices Ride-Hailing & Logistics (Tầng 1). Hỗ trợ chạy tự động qua Postman Collection Runner hoặc cURL trên môi trường Dev.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "user_url",
+			"value": "http://127.0.0.1:8001",
+			"type": "string"
+		},
+		{
+			"key": "default_password",
+			"value": "Test@1234",
+			"type": "string"
+		},
+		{
+			"key": "admin_email",
+			"value": "admin@ridehailing.local",
+			"type": "string"
+		},
+		{
+			"key": "admin_password",
+			"value": "Admin@123456",
+			"type": "string"
+		},
+		{
+			"key": "admin_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "admin_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "c1_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "c1_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "c1_refresh",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "c1_refresh_old",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "c2_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "c2_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "c2_refresh",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "c3_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "c3_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "c3_refresh",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "d1_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "d1_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "d1_refresh",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "d2_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "d2_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "d2_refresh",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "d3_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "d3_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "d3_refresh",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "d4_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "d4_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "d4_refresh",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "d5_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "d5_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "d5_refresh",
+			"value": "",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "00 Seed",
+			"item": [
+				{
+					"name": "00.0 Admin Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"var res = pm.response.json();",
+									"pm.test(\"Admin login success\", function () {",
+									"    pm.expect(res.success).to.be.true;",
+									"    pm.expect(res.data.user.role).to.eql(\"ADMIN\");",
+									"});",
+									"if (res.success && res.data) {",
+									"    pm.collectionVariables.set(\"admin_token\", res.data.access_token);",
+									"    pm.collectionVariables.set(\"admin_id\", res.data.user.id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone_or_email\": \"{{admin_email}}\",\n  \"password\": \"{{admin_password}}\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/api/v1/auth/login",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"login"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "00.1 C1 Register",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201 or 409\", function () {",
+									"    pm.expect([201, 409]).to.include(pm.response.code);",
+									"});",
+									"var res = pm.response.json();",
+									"if (res.success && res.data && res.data.user_id) {",
+									"    pm.collectionVariables.set(\"c1_id\", res.data.user_id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone_number\": \"0901000001\",\n  \"email\": \"customer1@demo.local\",\n  \"password\": \"{{default_password}}\",\n  \"full_name\": \"Nguyen Van An\",\n  \"role\": \"CUSTOMER\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/api/v1/auth/register",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"register"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "00.2 C1 Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"var res = pm.response.json();",
+									"if (res.success && res.data) {",
+									"    pm.collectionVariables.set(\"c1_id\", res.data.user.id);",
+									"    pm.collectionVariables.set(\"c1_token\", res.data.access_token);",
+									"    pm.collectionVariables.set(\"c1_refresh\", res.data.refresh_token);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone_or_email\": \"0901000001\",\n  \"password\": \"{{default_password}}\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/api/v1/auth/login",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"login"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "00.3 C2 Register",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201 or 409\", function () {",
+									"    pm.expect([201, 409]).to.include(pm.response.code);",
+									"});",
+									"var res = pm.response.json();",
+									"if (res.success && res.data && res.data.user_id) {",
+									"    pm.collectionVariables.set(\"c2_id\", res.data.user_id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone_number\": \"0901000002\",\n  \"email\": \"customer2@demo.local\",\n  \"password\": \"{{default_password}}\",\n  \"full_name\": \"Le Thi Binh\",\n  \"role\": \"CUSTOMER\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/api/v1/auth/register",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"register"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "00.4 C2 Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"var res = pm.response.json();",
+									"if (res.success && res.data) {",
+									"    pm.collectionVariables.set(\"c2_id\", res.data.user.id);",
+									"    pm.collectionVariables.set(\"c2_token\", res.data.access_token);",
+									"    pm.collectionVariables.set(\"c2_refresh\", res.data.refresh_token);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone_or_email\": \"0901000002\",\n  \"password\": \"{{default_password}}\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/api/v1/auth/login",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"login"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "00.5 C3 Register",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201 or 409\", function () {",
+									"    pm.expect([201, 409]).to.include(pm.response.code);",
+									"});",
+									"var res = pm.response.json();",
+									"if (res.success && res.data && res.data.user_id) {",
+									"    pm.collectionVariables.set(\"c3_id\", res.data.user_id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone_number\": \"0901000003\",\n  \"email\": \"customer3@demo.local\",\n  \"password\": \"{{default_password}}\",\n  \"full_name\": \"Pham Van Cuong\",\n  \"role\": \"CUSTOMER\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/api/v1/auth/register",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"register"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "00.6 C3 Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"var res = pm.response.json();",
+									"if (res.success && res.data) {",
+									"    pm.collectionVariables.set(\"c3_id\", res.data.user.id);",
+									"    pm.collectionVariables.set(\"c3_token\", res.data.access_token);",
+									"    pm.collectionVariables.set(\"c3_refresh\", res.data.refresh_token);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone_or_email\": \"0901000003\",\n  \"password\": \"{{default_password}}\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/api/v1/auth/login",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"login"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "00.7 D1 Register",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201 or 409\", function () {",
+									"    pm.expect([201, 409]).to.include(pm.response.code);",
+									"});",
+									"var res = pm.response.json();",
+									"if (res.success && res.data && res.data.user_id) {",
+									"    pm.collectionVariables.set(\"d1_id\", res.data.user_id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone_number\": \"0902000001\",\n  \"email\": \"driver1@demo.local\",\n  \"password\": \"{{default_password}}\",\n  \"full_name\": \"Tran Van Dung\",\n  \"role\": \"DRIVER\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/api/v1/auth/register",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"register"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "00.8 D1 Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"var res = pm.response.json();",
+									"if (res.success && res.data) {",
+									"    pm.collectionVariables.set(\"d1_id\", res.data.user.id);",
+									"    pm.collectionVariables.set(\"d1_token\", res.data.access_token);",
+									"    pm.collectionVariables.set(\"d1_refresh\", res.data.refresh_token);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone_or_email\": \"0902000001\",\n  \"password\": \"{{default_password}}\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/api/v1/auth/login",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"login"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "00.9 D2 Register",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201 or 409\", function () {",
+									"    pm.expect([201, 409]).to.include(pm.response.code);",
+									"});",
+									"var res = pm.response.json();",
+									"if (res.success && res.data && res.data.user_id) {",
+									"    pm.collectionVariables.set(\"d2_id\", res.data.user_id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone_number\": \"0902000002\",\n  \"email\": \"driver2@demo.local\",\n  \"password\": \"{{default_password}}\",\n  \"full_name\": \"Nguyen Van Em\",\n  \"role\": \"DRIVER\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/api/v1/auth/register",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"register"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "00.10 D2 Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"var res = pm.response.json();",
+									"if (res.success && res.data) {",
+									"    pm.collectionVariables.set(\"d2_id\", res.data.user.id);",
+									"    pm.collectionVariables.set(\"d2_token\", res.data.access_token);",
+									"    pm.collectionVariables.set(\"d2_refresh\", res.data.refresh_token);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone_or_email\": \"0902000002\",\n  \"password\": \"{{default_password}}\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/api/v1/auth/login",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"login"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "00.11 D3 Register",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201 or 409\", function () {",
+									"    pm.expect([201, 409]).to.include(pm.response.code);",
+									"});",
+									"var res = pm.response.json();",
+									"if (res.success && res.data && res.data.user_id) {",
+									"    pm.collectionVariables.set(\"d3_id\", res.data.user_id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone_number\": \"0902000003\",\n  \"email\": \"driver3@demo.local\",\n  \"password\": \"{{default_password}}\",\n  \"full_name\": \"Hoang Van Phuc\",\n  \"role\": \"DRIVER\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/api/v1/auth/register",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"register"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "00.12 D3 Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"var res = pm.response.json();",
+									"if (res.success && res.data) {",
+									"    pm.collectionVariables.set(\"d3_id\", res.data.user.id);",
+									"    pm.collectionVariables.set(\"d3_token\", res.data.access_token);",
+									"    pm.collectionVariables.set(\"d3_refresh\", res.data.refresh_token);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone_or_email\": \"0902000003\",\n  \"password\": \"{{default_password}}\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/api/v1/auth/login",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"login"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "00.13 D4 Register",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201 or 409\", function () {",
+									"    pm.expect([201, 409]).to.include(pm.response.code);",
+									"});",
+									"var res = pm.response.json();",
+									"if (res.success && res.data && res.data.user_id) {",
+									"    pm.collectionVariables.set(\"d4_id\", res.data.user_id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone_number\": \"0902000004\",\n  \"email\": \"driver4@demo.local\",\n  \"password\": \"{{default_password}}\",\n  \"full_name\": \"Vo Van Giang\",\n  \"role\": \"DRIVER\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/api/v1/auth/register",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"register"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "00.14 D4 Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"var res = pm.response.json();",
+									"if (res.success && res.data) {",
+									"    pm.collectionVariables.set(\"d4_id\", res.data.user.id);",
+									"    pm.collectionVariables.set(\"d4_token\", res.data.access_token);",
+									"    pm.collectionVariables.set(\"d4_refresh\", res.data.refresh_token);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone_or_email\": \"0902000004\",\n  \"password\": \"{{default_password}}\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/api/v1/auth/login",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"login"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "00.15 D5 Register",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201 or 409\", function () {",
+									"    pm.expect([201, 409]).to.include(pm.response.code);",
+									"});",
+									"var res = pm.response.json();",
+									"if (res.success && res.data && res.data.user_id) {",
+									"    pm.collectionVariables.set(\"d5_id\", res.data.user_id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone_number\": \"0902000005\",\n  \"email\": \"driver5@demo.local\",\n  \"password\": \"{{default_password}}\",\n  \"full_name\": \"Dang Van Hai\",\n  \"role\": \"DRIVER\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/api/v1/auth/register",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"register"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "00.16 D5 Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"var res = pm.response.json();",
+									"if (res.success && res.data) {",
+									"    pm.collectionVariables.set(\"d5_id\", res.data.user.id);",
+									"    pm.collectionVariables.set(\"d5_token\", res.data.access_token);",
+									"    pm.collectionVariables.set(\"d5_refresh\", res.data.refresh_token);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone_or_email\": \"0902000005\",\n  \"password\": \"{{default_password}}\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/api/v1/auth/login",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"login"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "01 user-service",
+			"item": [
+				{
+					"name": "U-01 Register Customer C1",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status is 201 Created or 409 Conflict\", function () {",
+									"    pm.expect([201, 409]).to.include(pm.response.code);",
+									"});",
+									"var res = pm.response.json();",
+									"if (pm.response.code === 201) {",
+									"    pm.test(\"Return valid customer data\", function () {",
+									"        pm.expect(res.success).to.be.true;",
+									"        pm.expect(res.data.role).to.eql(\"CUSTOMER\");",
+									"        pm.expect(res.data.user_id).to.be.a(\"string\");",
+									"    });",
+									"    pm.collectionVariables.set(\"c1_id\", res.data.user_id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone_number\": \"0901000001\",\n  \"email\": \"customer1@demo.local\",\n  \"password\": \"{{default_password}}\",\n  \"full_name\": \"Nguyen Van An\",\n  \"role\": \"CUSTOMER\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/api/v1/auth/register",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"register"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "U-02 Register Duplicate Phone (409)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 409 Conflict\", function () {",
+									"    pm.response.to.have.status(409);",
+									"});",
+									"var res = pm.response.json();",
+									"pm.test(\"Error code is USER_ALREADY_EXISTS\", function () {",
+									"    pm.expect(res.success).to.be.false;",
+									"    pm.expect(res.error.code).to.eql(\"USER_ALREADY_EXISTS\");",
+									"    pm.expect(res.error.message).to.eql(\"Số điện thoại hoặc email đã tồn tại trong hệ thống\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone_number\": \"0901000001\",\n  \"email\": \"other_email@demo.local\",\n  \"password\": \"{{default_password}}\",\n  \"full_name\": \"Nguyen Khach Khac\",\n  \"role\": \"CUSTOMER\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/api/v1/auth/register",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"register"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "U-03 Register Invalid Password (< 6 chars)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"var res = pm.response.json();",
+									"pm.test(\"Error code is VALIDATION_ERROR\", function () {",
+									"    pm.expect(res.success).to.be.false;",
+									"    pm.expect(res.error.code).to.eql(\"VALIDATION_ERROR\");",
+									"    pm.expect(res.error.message).to.eql(\"Mật khẩu phải từ 6 ký tự trở lên\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone_number\": \"0901000099\",\n  \"password\": \"123\",\n  \"full_name\": \"Test Short Pass\",\n  \"role\": \"CUSTOMER\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/api/v1/auth/register",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"register"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "U-04 Login Valid (200)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"var res = pm.response.json();",
+									"pm.test(\"Return access_token and refresh_token\", function () {",
+									"    pm.expect(res.success).to.be.true;",
+									"    pm.expect(res.data.access_token).to.be.a(\"string\");",
+									"    pm.expect(res.data.refresh_token).to.be.a(\"string\");",
+									"    pm.expect(res.data.expires_in).to.eql(3600);",
+									"    pm.expect(res.data.user.role).to.eql(\"CUSTOMER\");",
+									"});",
+									"if (res.success && res.data) {",
+									"    pm.collectionVariables.set(\"c1_token\", res.data.access_token);",
+									"    pm.collectionVariables.set(\"c1_refresh\", res.data.refresh_token);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone_or_email\": \"0901000001\",\n  \"password\": \"{{default_password}}\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/api/v1/auth/login",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"login"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "U-05 Login Wrong Password (401)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 401 Unauthorized\", function () {",
+									"    pm.response.to.have.status(401);",
+									"});",
+									"var res = pm.response.json();",
+									"pm.test(\"Error code is UNAUTHORIZED\", function () {",
+									"    pm.expect(res.success).to.be.false;",
+									"    pm.expect(res.error.code).to.eql(\"UNAUTHORIZED\");",
+									"    pm.expect(res.error.message).to.eql(\"Số điện thoại/email hoặc mật khẩu không chính xác\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone_or_email\": \"0901000001\",\n  \"password\": \"WrongPassword@123\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/api/v1/auth/login",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"login"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "U-06 Login Non-Existent User (401)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 401 Unauthorized\", function () {",
+									"    pm.response.to.have.status(401);",
+									"});",
+									"var res = pm.response.json();",
+									"pm.test(\"Same error message for anti-timing attack\", function () {",
+									"    pm.expect(res.success).to.be.false;",
+									"    pm.expect(res.error.code).to.eql(\"UNAUTHORIZED\");",
+									"    pm.expect(res.error.message).to.eql(\"Số điện thoại/email hoặc mật khẩu không chính xác\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone_or_email\": \"0999999999\",\n  \"password\": \"WrongPassword@123\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/api/v1/auth/login",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"login"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "U-07 Refresh Token Valid (200)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"var res = pm.response.json();",
+									"pm.test(\"New access_token and refresh_token returned\", function () {",
+									"    pm.expect(res.success).to.be.true;",
+									"    pm.expect(res.data.access_token).to.be.a(\"string\");",
+									"    pm.expect(res.data.refresh_token).to.be.a(\"string\");",
+									"});",
+									"if (res.success && res.data) {",
+									"    pm.collectionVariables.set(\"c1_refresh_old\", pm.collectionVariables.get(\"c1_refresh\"));",
+									"    pm.collectionVariables.set(\"c1_token\", res.data.access_token);",
+									"    pm.collectionVariables.set(\"c1_refresh\", res.data.refresh_token);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"refresh_token\": \"{{c1_refresh}}\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/api/v1/auth/refresh",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"refresh"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "U-08 Refresh Token Reused (401)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 401 Unauthorized\", function () {",
+									"    pm.response.to.have.status(401);",
+									"});",
+									"var res = pm.response.json();",
+									"pm.test(\"Error code is INVALID_REFRESH_TOKEN\", function () {",
+									"    pm.expect(res.success).to.be.false;",
+									"    pm.expect(res.error.code).to.eql(\"INVALID_REFRESH_TOKEN\");",
+									"    pm.expect(res.error.message).to.eql(\"Refresh token không tồn tại hoặc đã được sử dụng\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"refresh_token\": \"{{c1_refresh_old}}\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/api/v1/auth/refresh",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"refresh"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "U-09 Driver Status ONLINE (200)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"var res = pm.response.json();",
+									"pm.test(\"Driver status updated to ONLINE\", function () {",
+									"    pm.expect(res.success).to.be.true;",
+									"    pm.expect(res.data.status).to.eql(\"ONLINE\");",
+									"    pm.expect(res.data.driver_id).to.eql(pm.collectionVariables.get(\"d1_id\"));",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "X-User-Id",
+								"value": "{{d1_id}}"
+							},
+							{
+								"key": "X-User-Role",
+								"value": "DRIVER"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"status\": \"ONLINE\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/api/v1/driver/status",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"driver",
+								"status"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "U-10 Customer Update Driver Status (403)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 403 Forbidden\", function () {",
+									"    pm.response.to.have.status(403);",
+									"});",
+									"var res = pm.response.json();",
+									"pm.test(\"Error code is FORBIDDEN\", function () {",
+									"    pm.expect(res.success).to.be.false;",
+									"    pm.expect(res.error.code).to.eql(\"FORBIDDEN\");",
+									"    pm.expect(res.error.message).to.eql(\"Chỉ tài xế mới có quyền cập nhật trạng thái\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "X-User-Id",
+								"value": "{{c1_id}}"
+							},
+							{
+								"key": "X-User-Role",
+								"value": "CUSTOMER"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"status\": \"ONLINE\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/api/v1/driver/status",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"driver",
+								"status"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "U-11a Internal ONLINE to BUSY 1 (200)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"var res = pm.response.json();",
+									"pm.test(\"Status is now BUSY\", function () {",
+									"    pm.expect(res.success).to.be.true;",
+									"    pm.expect(res.data.status).to.eql(\"BUSY\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"from_status\": \"ONLINE\",\n  \"to_status\": \"BUSY\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/internal/v1/drivers/{{d1_id}}/status",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"internal",
+								"v1",
+								"drivers",
+								"{{d1_id}}",
+								"status"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "U-11b Internal ONLINE to BUSY 2 (400)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"var res = pm.response.json();",
+									"pm.test(\"Error code is DRIVER_NOT_AVAILABLE\", function () {",
+									"    pm.expect(res.success).to.be.false;",
+									"    pm.expect(res.error.code).to.eql(\"DRIVER_NOT_AVAILABLE\");",
+									"    pm.expect(res.error.message).to.eql(\"Trạng thái hiện tại khác from_status hoặc không tìm thấy tài xế\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"from_status\": \"ONLINE\",\n  \"to_status\": \"BUSY\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/internal/v1/drivers/{{d1_id}}/status",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"internal",
+								"v1",
+								"drivers",
+								"{{d1_id}}",
+								"status"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "U-12 Driver Status OFFLINE When BUSY (400)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"var res = pm.response.json();",
+									"pm.test(\"Error code is DRIVER_BUSY\", function () {",
+									"    pm.expect(res.success).to.be.false;",
+									"    pm.expect(res.error.code).to.eql(\"DRIVER_BUSY\");",
+									"    pm.expect(res.error.message).to.eql(\"Tài xế đang bận chuyến xe, không thể chuyển đổi trạng thái\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "X-User-Id",
+								"value": "{{d1_id}}"
+							},
+							{
+								"key": "X-User-Role",
+								"value": "DRIVER"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"status\": \"OFFLINE\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/api/v1/driver/status",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"driver",
+								"status"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "U-12-Cleanup Internal BUSY to ONLINE",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"var res = pm.response.json();",
+									"pm.test(\"D1 restored to ONLINE\", function () {",
+									"    pm.expect(res.success).to.be.true;",
+									"    pm.expect(res.data.status).to.eql(\"ONLINE\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"from_status\": \"BUSY\",\n  \"to_status\": \"ONLINE\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/internal/v1/drivers/{{d1_id}}/status",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"internal",
+								"v1",
+								"drivers",
+								"{{d1_id}}",
+								"status"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "U-13a Filter Online Empty Array (200)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"var res = pm.response.json();",
+									"pm.test(\"online_driver_ids is empty array\", function () {",
+									"    pm.expect(res.success).to.be.true;",
+									"    pm.expect(res.data.online_driver_ids).to.eql([]);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"driver_ids\": []\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/internal/v1/users/filter-online",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"internal",
+								"v1",
+								"users",
+								"filter-online"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "U-13b Filter Online Invalid UUID (400)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"var res = pm.response.json();",
+									"pm.test(\"Error code is VALIDATION_ERROR\", function () {",
+									"    pm.expect(res.success).to.be.false;",
+									"    pm.expect(res.error.code).to.eql(\"VALIDATION_ERROR\");",
+									"    pm.expect(res.error.message).to.include(\"not-a-valid-uuid\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"driver_ids\": [\"not-a-valid-uuid\"]\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/internal/v1/users/filter-online",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"internal",
+								"v1",
+								"users",
+								"filter-online"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "U-13c Filter Online Exceed 500 (400)",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"var arr = [];",
+									"for (var i = 1; i <= 501; i++) {",
+									"    var s = ('000000000000' + i).slice(-12);",
+									"    arr.push(\"\\\"00000000-0000-0000-0000-\" + s + \"\\\"\");",
+									"}",
+									"pm.variables.set(\"payload_501\", \"{\" + \"\\\"driver_ids\\\":[\" + arr.join(\",\") + \"]}\");"
+								],
+								"type": "text/javascript"
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"var res = pm.response.json();",
+									"pm.test(\"Error message exceeds 500 items\", function () {",
+									"    pm.expect(res.success).to.be.false;",
+									"    pm.expect(res.error.code).to.eql(\"VALIDATION_ERROR\");",
+									"    pm.expect(res.error.message).to.eql(\"Mảng driver_ids vượt quá giới hạn tối đa 500 phần tử\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{{payload_501}}"
+						},
+						"url": {
+							"raw": "{{user_url}}/internal/v1/users/filter-online",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"internal",
+								"v1",
+								"users",
+								"filter-online"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "U-13d Filter Online Valid (200)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"var res = pm.response.json();",
+									"pm.test(\"Returns D1 ID in online drivers\", function () {",
+									"    pm.expect(res.success).to.be.true;",
+									"    pm.expect(res.data.online_driver_ids).to.include(pm.collectionVariables.get(\"d1_id\"));",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"driver_ids\": [\"{{d1_id}}\"]\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/internal/v1/users/filter-online",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"internal",
+								"v1",
+								"users",
+								"filter-online"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "U-14a-Setup D1 to BUSY",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"from_status\": \"ONLINE\",\n  \"to_status\": \"BUSY\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/internal/v1/drivers/{{d1_id}}/status",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"internal",
+								"v1",
+								"drivers",
+								"{{d1_id}}",
+								"status"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "U-14a Logout Driver When BUSY (400)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"var res = pm.response.json();",
+									"pm.test(\"Error code is DRIVER_CANNOT_LOGOUT\", function () {",
+									"    pm.expect(res.success).to.be.false;",
+									"    pm.expect(res.error.code).to.eql(\"DRIVER_CANNOT_LOGOUT\");",
+									"    pm.expect(res.error.message).to.eql(\"Tài xế đang trong chuyến đi, không thể đăng xuất\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "X-User-Id",
+								"value": "{{d1_id}}"
+							},
+							{
+								"key": "X-User-Role",
+								"value": "DRIVER"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{d1_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"refresh_token\": \"{{d1_refresh}}\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/api/v1/auth/logout",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"logout"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "U-14a-Cleanup Restore D1 to OFFLINE",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"from_status\": \"BUSY\",\n  \"to_status\": \"ONLINE\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/internal/v1/drivers/{{d1_id}}/status",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"internal",
+								"v1",
+								"drivers",
+								"{{d1_id}}",
+								"status"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "U-14b Logout With Other User Refresh Token (401)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 401 Unauthorized\", function () {",
+									"    pm.response.to.have.status(401);",
+									"});",
+									"var res = pm.response.json();",
+									"pm.test(\"Error code is INVALID_REFRESH_TOKEN\", function () {",
+									"    pm.expect(res.success).to.be.false;",
+									"    pm.expect(res.error.code).to.eql(\"INVALID_REFRESH_TOKEN\");",
+									"    pm.expect(res.error.message).to.eql(\"Refresh token không tồn tại hoặc đã được sử dụng\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "X-User-Id",
+								"value": "{{c1_id}}"
+							},
+							{
+								"key": "X-User-Role",
+								"value": "CUSTOMER"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{c1_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"refresh_token\": \"{{d1_refresh}}\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/api/v1/auth/logout",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"logout"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "U-14c Logout Customer Success (200)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"var res = pm.response.json();",
+									"pm.test(\"Logout success message\", function () {",
+									"    pm.expect(res.success).to.be.true;",
+									"    pm.expect(res.data.message).to.eql(\"Đăng xuất thành công\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "X-User-Id",
+								"value": "{{c1_id}}"
+							},
+							{
+								"key": "X-User-Role",
+								"value": "CUSTOMER"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{c1_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"refresh_token\": \"{{c1_refresh}}\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/api/v1/auth/logout",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"logout"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "U-15 Admin Login (200)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"var res = pm.response.json();",
+									"pm.test(\"Admin role confirmed\", function () {",
+									"    pm.expect(res.success).to.be.true;",
+									"    pm.expect(res.data.user.role).to.eql(\"ADMIN\");",
+									"    pm.expect(res.data.user.driver_status).to.be.null;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone_or_email\": \"{{admin_email}}\",\n  \"password\": \"{{admin_password}}\"\n}"
+						},
+						"url": {
+							"raw": "{{user_url}}/api/v1/auth/login",
+							"host": [
+								"{{user_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"login"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}

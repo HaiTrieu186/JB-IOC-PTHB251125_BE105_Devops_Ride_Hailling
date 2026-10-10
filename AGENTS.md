@@ -123,6 +123,7 @@ Hai gateway publish dạng 127.0.0.1:PORT (không dùng 0.0.0.0, vì Docker có 
 - Dùng stdlib, KHÔNG thêm thư viện: log/slog (JSON handler), os.Getenv cho cấu hình, tự viết validate, net/http cho REST nội bộ, OSRM, Gemini. Không viper/zap/zerolog/validator. Không viết unit test (CI chỉ go vet + go build).
 - CI/CD: actions/checkout, actions/setup-go, docker/login-action, build bằng docker build + docker push thường (không buildx, không cache); deploy bằng appleboy/scp-action và appleboy/ssh-action. Tên owner GHCR luôn chữ thường.
 - Script demo: Python 3 + aiohttp. Test WS: image websocat chạy tạm. Test REST nội bộ: curlimages/curl trên mạng backend-net.
+- API test: Postman (collection v2.1 JSON) + docker-compose.dev.yml chỉ dùng trên máy dev, không đưa lên VPS.
 - Compose: container_name = tên service; restart: unless-stopped; logging json-file max-size 5m, max-file 2; mỗi service có cả build và image ghcr.io/${GHCR_OWNER}/<tên>:latest; mạng default đặt tên backend-net.
 - Chưa làm (để sau cùng nếu còn thời gian, profile riêng): Dozzle, Prometheus + node_exporter + cAdvisor.
 - Muốn dùng thư viện/công nghệ ngoài danh sách này: HỎI người dùng trước.
