@@ -59,8 +59,8 @@
 ### 4.1. Tiêu thụ sự kiện từ Redis Stream (UC-27)
 1. Worker của `ai-service` tham gia consumer group `ai-group` lắng nghe stream `stream:trip_events`.
 2. **Khởi tạo group (Idempotent):** Thực thi `XGROUP CREATE stream:trip_events ai-group 0 MKSTREAM`. Bỏ qua lỗi `BUSYGROUP`.
-3. **Vòng lặp tiêu thụ tin nhắn:**
-   - *Quét tồn đọng PEL:* Định kỳ mỗi 2–5 giây trong vòng lặp chính (không chỉ lúc khởi động), gọi `XREADGROUP GROUP ai-group ai-consumer-1 STREAMS stream:trip_events 0` để đọc lại và xử lý hết các message còn treo trong PEL cho tới khi hết.
+3. **Vòng lặp tiêu thụ tin nhắn (Quy tắc Mục 5(m) Hợp đồng LLD-00):**
+   - *Đọc tồn đọng PEL:* Mỗi chu kỳ (2–5 giây) gọi ĐÚNG 1 lượt `XREADGROUP GROUP ai-group ai-consumer-1 COUNT <PEL_BATCH_COUNT> STREAMS stream:trip_events 0` (KHÔNG lặp cho tới khi hết). Đếm số lần giao bằng `XPENDING` (delivery count) hoặc bộ đếm RAM `map[msg_id]int` (dọn khi XACK). Vượt trần `MAX_DELIVERY_ATTEMPTS` thì log `ERROR` rồi `XACK`. Nếu gặp lỗi vi phạm Unique Constraint (Postgres code 23505) thì coi là duplicate $\rightarrow$ `XACK` và bỏ qua.
    - *Đọc tin mới:* Gọi `XREADGROUP GROUP ai-group ai-consumer-1 BLOCK 2000 STREAMS stream:trip_events >`.
 4. **Xử lý từng loại sự kiện:**
    - **Phân loại sự kiện:** Đọc trực tiếp trường `type` của message từ stream (`TripCreated`, `TripCompleted`, `TripCancelled`, `TripExpired`).
@@ -75,7 +75,7 @@
        Chèn bản ghi với `event_type = 'TripCompleted'`, `fare = fare`, `commission = commission`, `event_time = completed_at`.
      - Với `TripCancelled` (`type == "TripCancelled"`): Trích xuất `cancelled_at`. Chèn bản ghi với `event_type = 'TripCancelled'`, `event_time = cancelled_at`.
      - Với `TripExpired` (`type == "TripExpired"`): Trích xuất `expired_at`. Chèn bản ghi với `event_type = 'TripExpired'`, `event_time = expired_at`.
-   - **Xử lý lỗi DB:** Nếu transaction DB commit thành công $\rightarrow$ gửi `XACK stream:trip_events ai-group <msg_id>` (lỗi XACK chỉ log ERROR). Nếu gặp lỗi DB tạm thời $\rightarrow$ **KHÔNG XACK**, để message nằm lại trong PEL và sẽ được đọc lại sau 2–5 giây ở chu kỳ quét PEL kế tiếp.
+   - **Xử lý lỗi DB:** Nếu transaction DB commit thành công $\rightarrow$ gửi `XACK stream:trip_events ai-group <msg_id>` (lỗi XACK chỉ log ERROR). Nếu gặp lỗi DB tạm thời $\rightarrow$ **KHÔNG XACK**, để message nằm lại trong PEL và sẽ được đọc lại sau 2–5 giây ở chu kỳ quét PEL kế tiếp (tối đa `MAX_DELIVERY_ATTEMPTS` lần).
 
 ### 4.2. Trích xuất số liệu thống kê (UC-28)
 1. Kiểm tra header `X-User-Role == 'ADMIN'` (sai $\rightarrow$ `FORBIDDEN` 403).
@@ -146,9 +146,9 @@
 | Khoảng thời gian không hợp lệ | `start_time > end_time` | Trả `VALIDATION_ERROR` (400). |
 | Sai vai trò Quản trị viên | Người dùng không phải ADMIN gọi API báo cáo | Trả `FORBIDDEN` (403). |
 | LLM lỗi / Timeout / Hết quota / Chặn an toàn | `LLM_API_KEY` rỗng; timeout; lỗi mạng; HTTP khác 200 (gồm 400/403/404/429); thân phản hồi không parse được; không có `candidates` hoặc text rỗng (bị chặn an toàn, `promptFeedback.blockReason`) | `LLM_API_KEY` rỗng: không gọi, không log WARN; các điều kiện lỗi còn lại: log WARN (không log header/API key). Tự động Fallback sang Heuristic Rule, trả 200 OK kèm `insight_source = "RULE_BASED"`. Tuyệt đối không trả 500. |
-| Event Stream lặp lại | Consumer nhận lại event đã có trong DB | Idempotency theo `(trip_id, event_type)` bỏ qua và gửi `XACK`. |
+| Event Stream lặp lại | Consumer nhận lại event đã có trong DB | Idempotency theo `(trip_id, event_type)` (hoặc lỗi vi phạm unique 23505) bỏ qua và gửi `XACK`. |
 | Message Stream hỏng | Thiếu trường, UUID sai, fare $\le 0$, hoặc entry rỗng | Log ERROR, gửi XACK loại bỏ tin nhắn hỏng. |
-| Lỗi DB tạm thời lúc tiêu thụ stream | Lỗi kết nối PostgreSQL khi lưu sự kiện analytics | KHÔNG XACK, giữ trong PEL để xử lý lại sau 2–5s. |
+| Lỗi DB tạm thời lúc tiêu thụ stream | Lỗi kết nối PostgreSQL khi lưu sự kiện analytics | KHÔNG XACK, giữ trong PEL để xử lý lại sau 2–5s (tối đa `MAX_DELIVERY_ATTEMPTS` lần). |
 | Lỗi XACK sau commit DB | Redis timeout/mất mạng khi gửi XACK | Log ERROR, không rollback DB. Event trong PEL sẽ được idempotency bỏ qua khi quét lại. |
 
 ### 5.1. Hạn chế đã biết
@@ -192,6 +192,8 @@
 | `LLM_TIMEOUT_SECONDS` | `10` | Thời gian chờ tối đa khi gọi Google Gemini API trước khi kích hoạt Fallback (giây). |
 | `RULE_HIGH_CANCEL_RATE_THRESHOLD` | `20.0` | Ngưỡng tỷ lệ hủy (%) kích hoạt cảnh báo trong Heuristic Rule. |
 | `RULE_HIGH_EXPIRE_RATE_THRESHOLD` | `15.0` | Ngưỡng tỷ lệ hết giờ (%) kích hoạt cảnh báo trong Heuristic Rule. |
+| `MAX_DELIVERY_ATTEMPTS` | `5` | Số lần thử lại tối đa trước khi loại bỏ message hỏng khỏi PEL (Mục 5(m) LLD-00). |
+| `PEL_BATCH_COUNT` | `10` | Số lượng message tối đa đọc mỗi chu kỳ quét PEL (Mục 5(m) LLD-00). |
 
 ### 7.2. Tài nguyên & Thứ tự khởi động
 - **Connection Pool PostgreSQL (Mục 5(h) LLD-00):** `MaxOpenConns = 5`, `MaxIdleConns = 2`, `ConnMaxLifetime = 30m`.

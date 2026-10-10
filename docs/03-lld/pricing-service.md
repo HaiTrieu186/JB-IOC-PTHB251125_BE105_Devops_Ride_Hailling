@@ -41,8 +41,8 @@
 | Method & Path | Tầng | Actor | Request Fields | Response Data Fields | Mã lỗi kích hoạt |
 | :--- | :-: | :--- | :--- | :--- | :--- |
 | `POST /api/v1/pricing/estimate` | 1 | Đã đăng nhập (`CUSTOMER`, `DRIVER`, `ADMIN`) | `pickup_lat` (float, B)<br>`pickup_lng` (float, B)<br>`dropoff_lat` (float, B)<br>`dropoff_lng` (float, B) | `distance` (float, km)<br>`eta` (int, phút)<br>`source` ("OSRM" \| "HAVERSINE")<br>`surge_multiplier` (float)<br>`base_fare` (int)<br>`price_per_km` (int)<br>`total_fare` (int, VND) | `UNAUTHORIZED` (401: thiếu/sai token)<br>`VALIDATION_ERROR` (400: tọa độ sai hoặc đón trùng trả) |
-| `GET /api/v1/admin/pricing/config` | 3 | `ADMIN` | *(None)* | `base_fare` (int)<br>`price_per_km` (int)<br>`surge_threshold` (float)<br>`updated_at` (iso8601) | `FORBIDDEN` (403: role != ADMIN) |
-| `PUT /api/v1/admin/pricing/config` | 3 | `ADMIN` | `base_fare` (int, B, $> 0$)<br>`price_per_km` (int, B, $> 0$)<br>`surge_threshold` (float, B, $\in [0.01, 99.99]$, tối đa 2 chữ số thập phân) | `base_fare` (int)<br>`price_per_km` (int)<br>`surge_threshold` (float)<br>`updated_at` (iso8601) | `FORBIDDEN` (403: role != ADMIN)<br>`VALIDATION_ERROR` (400: thiếu trường, giá trị $\le 0$ hoặc surge_threshold ngoài [0.01, 99.99]) |
+| `GET /api/v1/admin/pricing/config` | 1 | `ADMIN` | *(None)* | `base_fare` (int)<br>`price_per_km` (int)<br>`surge_threshold` (float)<br>`updated_at` (iso8601) | `FORBIDDEN` (403: role != ADMIN) |
+| `PUT /api/v1/admin/pricing/config` | 1 | `ADMIN` | `base_fare` (int, B, $> 0$)<br>`price_per_km` (int, B, $> 0$)<br>`surge_threshold` (float, B, $\in [0.01, 99.99]$, tối đa 2 chữ số thập phân) | `base_fare` (int)<br>`price_per_km` (int)<br>`surge_threshold` (float)<br>`updated_at` (iso8601) | `FORBIDDEN` (403: role != ADMIN)<br>`VALIDATION_ERROR` (400: thiếu trường, giá trị $\le 0$ hoặc surge_threshold ngoài [0.01, 99.99]) |
 | `GET /health` *(do LLD đặt)* | 1 | Tất cả | *(None)* | `status` ("ok") | *(None)* |
 
 *(B: Bắt buộc, T: Tùy chọn)*
@@ -61,7 +61,7 @@
 1. Kiểm tra cache Redis: `GET pricing:config`. Nếu key tồn tại $\rightarrow$ parse JSON lấy `{base_fare, price_per_km, surge_threshold}`.
 2. Nếu cache miss hoặc Redis cache gặp lỗi:
    - Truy vấn trực tiếp DB: `SELECT base_fare, price_per_km, surge_threshold, updated_at FROM pricing_configs WHERE id = 1`.
-   - Nếu DB chưa có dòng nào: Đọc giá trị mặc định từ ENV (`DEFAULT_BASE_FARE`, `DEFAULT_PRICE_PER_KM`, `SURGE_THRESHOLD`).
+   - Các biến môi trường ENV (`DEFAULT_BASE_FARE`, `DEFAULT_PRICE_PER_KM`, `SURGE_THRESHOLD`) CHỈ dùng làm giá trị seed khởi tạo lần đầu duy nhất khi bảng `pricing_configs` rỗng; sau khi đã có bản ghi trong DB thì toàn bộ hệ thống đọc từ DB (cache Redis 1 giờ). Muốn thay đổi bảng giá lúc runtime, Admin dùng `PUT /api/v1/admin/pricing/config` (khi đó cache `pricing:config` bị `DEL`).
    - Nếu đọc cache miss nhưng Redis hoạt động bình thường, lưu cache Redis: `SET pricing:config <json> EX 3600` (TTL 1 giờ). Nếu Redis lỗi thì bỏ qua bước ghi cache, tiếp tục trả kết quả từ DB.
 3. API `GET /api/v1/admin/pricing/config`: **luôn đọc thẳng từ DB** (không qua cache Redis vì cache không lưu trường `updated_at`).
 4. Khi Admin cập nhật (`PUT /api/v1/admin/pricing/config`):
@@ -117,8 +117,8 @@
 ### 4.5. Tiến trình Tích lũy Demand từ Redis Streams (`stream:trip_events`)
 1. Service khởi chạy goroutine worker tiêu thụ stream với consumer group `pricing-group` và tên consumer `pricing-consumer-1`.
 2. **Khởi tạo group (Idempotent):** Thực thi `XGROUP CREATE stream:trip_events pricing-group 0 MKSTREAM`. Bỏ qua lỗi `BUSYGROUP`.
-3. **Vòng lặp tiêu thụ tin nhắn:**
-   - *Quét tồn đọng PEL:* Định kỳ mỗi 2–5 giây trong vòng lặp chính (không chỉ lúc khởi động), gọi `XREADGROUP GROUP pricing-group pricing-consumer-1 STREAMS stream:trip_events 0` để xử lý dứt điểm các tin nhắn còn treo trong PEL cho tới khi hết.
+3. **Vòng lặp tiêu thụ tin nhắn (Quy tắc Mục 5(m) Hợp đồng LLD-00):**
+   - *Đọc tồn đọng PEL:* Mỗi chu kỳ (2–5 giây) gọi ĐÚNG 1 lượt `XREADGROUP GROUP pricing-group pricing-consumer-1 COUNT <PEL_BATCH_COUNT> STREAMS stream:trip_events 0` (KHÔNG lặp cho tới khi hết). Đếm số lần giao bằng `XPENDING` (delivery count) hoặc bộ đếm RAM `map[msg_id]int` (dọn khi XACK). Vượt trần `MAX_DELIVERY_ATTEMPTS` thì log `ERROR` rồi `XACK`. Nếu gặp lỗi vi phạm Unique Constraint (Postgres code 23505) thì coi là duplicate $\rightarrow$ `XACK` và bỏ qua.
    - *Đọc tin mới:* Gọi `XREADGROUP GROUP pricing-group pricing-consumer-1 BLOCK 2000 STREAMS stream:trip_events >`.
 4. **Xử lý sự kiện từ stream:**
    - **Phân loại sự kiện:** Đọc trực tiếp trường `type` của message (không suy đoán từ trường khác).
@@ -129,7 +129,7 @@
      - Nếu $\le 300\text{s}$:
        1. Ghi nhận vào ZSET: `ZADD demand:geo:<pickup_geohash5> <unix_created_at> <trip_id>`.
        2. Đặt TTL an toàn cho toàn bộ key: `EXPIRE demand:geo:<pickup_geohash5> 300`.
-       3. Nếu ghi Redis thành công $\rightarrow$ Xác nhận `XACK stream:trip_events pricing-group <msg_id>`. Nếu gặp sự cố Redis tạm thời $\rightarrow$ **KHÔNG XACK**, để message nằm lại trong PEL và sẽ được đọc lại sau 2–5 giây ở vòng lặp kế tiếp.
+       3. Nếu ghi Redis thành công $\rightarrow$ Xác nhận `XACK stream:trip_events pricing-group <msg_id>`. Nếu gặp sự cố Redis tạm thời $\rightarrow$ **KHÔNG XACK**, để message nằm lại trong PEL và sẽ được đọc lại sau 2–5 giây ở vòng lặp kế tiếp (tối đa `MAX_DELIVERY_ATTEMPTS` lần).
    - **Các sự kiện khác:** Nếu `type` là `TripCompleted`, `TripCancelled`, `TripExpired` $\rightarrow$ Bỏ qua và `XACK`.
 
 ---
@@ -138,7 +138,7 @@
 
 | Tình huống ngoại lệ | Ngữ cảnh phát sinh | Hành vi xử lý & Mã lỗi |
 | :--- | :--- | :--- |
-| Tọa độ không hợp lệ | Vĩ độ ngoài [-90, 90], kinh độ ngoài [-180, 180] | Trả `VALIDATION_ERROR` (400). |
+| Tọa độ không hợp lệ | Tọa độ ngoài dải chuẩn ở Mục 4 LLD-00 (vĩ độ [-85.05112878, 85.05112878], kinh độ [-180, 180]) | Trả `VALIDATION_ERROR` (400). |
 | Trùng điểm đón và trả | Tọa độ đón và trả giống hệt nhau | Trả `VALIDATION_ERROR` (400). |
 | Tham số cấu hình giá sai | `base_fare <= 0`, `price_per_km <= 0` hoặc `surge_threshold` ngoài [0.01, 99.99] | Trả `VALIDATION_ERROR` (400). |
 | OSRM Public API lỗi/timeout | OSRM timeout $> 400\text{ ms}$ hoặc mất kết nối | Tự động Fallback Haversine $\times 1.35$, trả 200 OK kèm `source = "HAVERSINE"`. |
@@ -146,7 +146,7 @@
 | Redis Demand lỗi | Lỗi kết nối Redis khi đọc ZSET Demand | Tự động Fallback gán `surge_multiplier = 1.0`, trả 200 OK. |
 | Redis Cache Config lỗi | Lỗi kết nối Redis khi đọc cache `pricing:config` | Đọc trực tiếp từ PostgreSQL `pricingdb`, trả 200 OK. |
 | Sai vai trò Quản trị viên | Người dùng thông thường gọi API cấu hình giá | Trả `FORBIDDEN` (403). |
-| Consumer gặp lỗi Redis/DB | Lỗi Redis tạm thời khi ghi Demand | KHÔNG XACK, giữ trong PEL để xử lý lại sau 2–5s. |
+| Consumer gặp lỗi Redis/DB | Lỗi Redis tạm thời khi ghi Demand | KHÔNG XACK, giữ trong PEL để xử lý lại sau 2–5s (tối đa `MAX_DELIVERY_ATTEMPTS` lần). |
 | Message Stream hỏng | Thiếu trường, sai kiểu, hoặc entry rỗng do MAXLEN | Log ERROR, gọi XACK loại bỏ tin nhắn hỏng. |
 
 ### 5.1. Hạn chế đã biết
@@ -186,6 +186,8 @@
 | `INTERNAL_HTTP_TIMEOUT_MS` | `500` | Timeout tối đa khi gọi REST nội bộ sang location-service và user-service (ms). |
 | `LOCATION_SERVICE_URL`| `http://location-service:8002` | Base URL gọi nội bộ `location-service`. |
 | `USER_SERVICE_URL` | `http://user-service:8001` | Base URL gọi nội bộ `user-service`. |
+| `MAX_DELIVERY_ATTEMPTS` | `5` | Số lần thử lại tối đa trước khi loại bỏ message hỏng khỏi PEL (Mục 5(m) LLD-00). |
+| `PEL_BATCH_COUNT` | `10` | Số lượng message tối đa đọc mỗi chu kỳ quét PEL (Mục 5(m) LLD-00). |
 
 ### 7.2. Tài nguyên & Thứ tự khởi động
 - **Connection Pool PostgreSQL (Mục 5(h) LLD-00):** `MaxOpenConns = 5`, `MaxIdleConns = 2`, `ConnMaxLifetime = 30m`.

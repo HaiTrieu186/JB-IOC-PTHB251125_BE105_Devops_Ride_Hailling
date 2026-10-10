@@ -38,7 +38,7 @@
 | `cancel_reason` | `TEXT` | NULLABLE | Lý do hủy cuốc hoặc lý do force-cancel. |
 | `created_at` / `updated_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` | Thời gian tạo và cập nhật bản ghi UTC. |
 
-- **Chỉ mục & Ràng buộc toàn vẹn:** Các partial index tạo bằng SQL migration thô hoặc GORM tag where.
+- **Chỉ mục & Ràng buộc toàn vẹn:** Tạo bằng raw SQL theo quy ước Mục 5(l) Hợp đồng LLD-00 (không dùng GORM tag where).
   - `idx_trips_active_customer`: `CREATE UNIQUE INDEX ... ON trips (customer_id) WHERE status IN ('CREATED', 'MATCHING', 'ACCEPTED', 'PICKING_UP', 'IN_TRIP')` (Ngăn chặn triệt để 2 chuyến active đồng thời của 1 khách).
   - `idx_trips_matching_timeout`: `CREATE INDEX ... ON trips (matching_expires_at) WHERE status = 'MATCHING'` (Tối ưu worker quét quá hạn 2s/lần).
   - `idx_trips_customer_lookup`: `CREATE INDEX ... ON trips (customer_id, status)` (Tra cứu chuyến hiện tại của khách).
@@ -54,13 +54,15 @@
 | `note` | `TEXT` | NULLABLE | Ghi chú chuyển trạng thái (ví dụ `ADMIN_FORCE_CANCEL`, `TIMEOUT_30S`). |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` | Mốc thời gian chuyển trạng thái UTC. |
 
-- **Chỉ mục:** `idx_timeline_trip_id`: `CREATE INDEX ... ON status_timeline (trip_id, created_at ASC)`.
+- **Chỉ mục:** `idx_timeline_trip_id`: `CREATE INDEX ... ON status_timeline (trip_id, id ASC)`. (Lý do: `CREATED` và `MATCHING` chèn trong cùng một transaction nên `created_at` trùng nhau; sắp theo `id` tăng dần để đảm bảo thứ tự dòng thời gian chuẩn xác).
 
 ---
 
 ## 3. API SPECIFICATION
 
 Toàn bộ request/response sử dụng định dạng JSON thống nhất theo AGENTS.md. Header `X-User-Id` và `X-User-Role` do `api-gateway` xác thực và chuyển tiếp.
+
+> **Thứ tự đăng ký Route:** Trong Fiber router, endpoint `GET /api/v1/trips/current` BẮT BUỘC phải đăng ký TRƯỚC `GET /api/v1/trips/:id` (giống `api-gateway`) để tránh nhầm chuỗi literal "current" là tham số `:id`.
 
 *Ghi chú đối tượng Trip:* Gồm các trường tương ứng bảng `trips` (trừ `invited_drivers`): `id` (uuid), `customer_id` (uuid), `driver_id` (uuid|null), `status` (string), `pickup_lat` (float), `pickup_lng` (float), `pickup_address` (string), `dropoff_lat` (float), `dropoff_lng` (float), `dropoff_address` (string), `fare` (int), `distance_m` (int), `surge_multiplier` (float), `pickup_geohash5` (string), `matching_expires_at` (iso8601), `completed_at` (iso8601|null), `cancelled_by` (string|null), `cancel_reason` (string|null), `created_at` (iso8601), `updated_at` (iso8601).
 
@@ -74,10 +76,10 @@ Toàn bộ request/response sử dụng định dạng JSON thống nhất theo 
 | `POST /api/v1/trips/:id/start-trip` | 1 | `DRIVER` | Path: `id` (uuid, B) | `id` (uuid)<br>`status` ("IN_TRIP") | `FORBIDDEN` (403: role != DRIVER hoặc không phải tài xế cuốc)<br>`TRIP_NOT_FOUND` (404: không tìm thấy)<br>`INVALID_TRIP_STATUS` (400: status != PICKING_UP) |
 | `POST /api/v1/trips/:id/complete` | 1 | `DRIVER` | Path: `id` (uuid, B) | `id` (uuid)<br>`status` ("COMPLETED")<br>`completed_at` (iso8601) | `FORBIDDEN` (403: role != DRIVER hoặc không phải tài xế cuốc)<br>`TRIP_NOT_FOUND` (404: không tìm thấy)<br>`INVALID_TRIP_STATUS` (400: status != IN_TRIP) |
 | `POST /api/v1/trips/:id/cancel` | 1 | `CUSTOMER`<br>`DRIVER` | Path: `id` (uuid, B)<br>`reason` (string, T) | `id` (uuid)<br>`status` ("CANCELLED") | `FORBIDDEN` (403: không thuộc chuyến)<br>`TRIP_NOT_FOUND` (404: không tìm thấy)<br>`INVALID_TRIP_STATUS` (400: sai điều kiện hủy) |
-| `GET /api/v1/trips/current` | 1 | `CUSTOMER`<br>`DRIVER` | *(None)* | `trip` (`Trip` \| null) | *(None - trả data: null nếu rỗng)* |
-| `GET /api/v1/trips/:id` | 1 | `CUSTOMER`<br>`DRIVER` | Path: `id` (uuid, B) | `trip` (`Trip`)<br>`status_timeline` (array) | `FORBIDDEN` (403: không thuộc chuyến)<br>`TRIP_NOT_FOUND` (404: không tồn tại) |
-| `POST /api/v1/admin/trips/:id/force-cancel` | 3 | `ADMIN` | Path: `id` (uuid, B)<br>`reason` (string, B) | `id` (uuid)<br>`status` ("CANCELLED")<br>`cancelled_by` ("ADMIN") | `FORBIDDEN` (403: role != ADMIN)<br>`TRIP_NOT_FOUND` (404: id không tồn tại)<br>`INVALID_TRIP_STATUS` (400: cuốc đã kết thúc) |
-| `GET /api/v1/admin/trips` | 3 | `ADMIN` | Query: `status` (T), `page` (T), `limit` (T) | `trips` (array of `Trip`)<br>`total` (int)<br>`page` (int) | `FORBIDDEN` (403: role != ADMIN) |
+| `GET /api/v1/trips/current` | 1 | `CUSTOMER`<br>`DRIVER` | *(None)* | `trip` (`Trip` \| null) | `FORBIDDEN` (403: role == ADMIN; xem qua /api/v1/admin/trips)<br>*(Trả data: null nếu không có cuốc active)* |
+| `GET /api/v1/trips/:id` | 1 | `CUSTOMER`<br>`DRIVER` | Path: `id` (uuid, B) | `trip` (`Trip`)<br>`status_timeline` (array, sắp xếp theo `id ASC`) | `FORBIDDEN` (403: không thuộc chuyến)<br>`TRIP_NOT_FOUND` (404: không tồn tại) |
+| `POST /api/v1/admin/trips/:id/force-cancel` | 1 | `ADMIN` | Path: `id` (uuid, B)<br>`reason` (string, B) | `id` (uuid)<br>`status` ("CANCELLED")<br>`cancelled_by` ("ADMIN") | `FORBIDDEN` (403: role != ADMIN)<br>`TRIP_NOT_FOUND` (404: id không tồn tại)<br>`INVALID_TRIP_STATUS` (400: cuốc đã kết thúc) |
+| `GET /api/v1/admin/trips` | 1 | `ADMIN` | Query: `status` (T), `page` (T), `limit` (T) | `trips` (array of `Trip`)<br>`total` (int)<br>`page` (int) | `FORBIDDEN` (403: role != ADMIN) |
 | `GET /health` *(do LLD đặt)* | 1 | Tất cả | *(None)* | `status` ("ok") | *(None)* |
 
 *(B: Bắt buộc, T: Tùy chọn)*
@@ -90,28 +92,29 @@ Toàn bộ request/response sử dụng định dạng JSON thống nhất theo 
 ## 4. LUỒNG XỬ LÝ TỪNG BƯỚC
 
 ### 4.1. Luồng Tạo chuyến & Phát sóng mời xe (UC-17, UC-18)
-1. **Kiểm tra dữ liệu & Role:** Kiểm tra header `X-User-Role == 'CUSTOMER'` (sai $\rightarrow$ `FORBIDDEN` 403). Validate tọa độ hợp lệ.
-2. **Lấy báo giá:** Gọi nội bộ `POST /internal/v1/pricing/estimate` lấy `fare`, `distance_m`, `surge_multiplier`. Nếu lỗi/timeout $\rightarrow$ Trả `SERVICE_UNAVAILABLE` (503).
-3. **Kiểm tra ví:** Gọi nội bộ `POST /internal/v1/wallets/check-balance` với `user_id` và `required_amount = fare`. Nếu lỗi/timeout $\rightarrow$ Trả `SERVICE_UNAVAILABLE` (503). Nếu `sufficient = false` $\rightarrow$ Trả `INSUFFICIENT_BALANCE` (400).
-4. **Tính Geohash:** Tính chuỗi `pickup_geohash5` chuẩn độ dài 5 từ tọa độ đón.
-5. **Giao dịch DB INSERT chuyến:** Mở transaction DB:
-   - Chèn bản ghi vào `trips` với `status = 'MATCHING'`, `matching_expires_at = now() + (MATCHING_TIMEOUT_SECONDS * interval '1 second')`, `fare` cố định, `pickup_geohash5`.
+1. **Kiểm tra dữ liệu & Role:** Kiểm tra header `X-User-Role == 'CUSTOMER'` (sai $\rightarrow$ `FORBIDDEN` 403). Validate đầy đủ trước khi gọi bất kỳ service nào: tọa độ đón/trả nằm trong dải chuẩn ở Mục 4 LLD-00 (vĩ độ [-85.05112878, 85.05112878], kinh độ [-180, 180]), điểm đón khác điểm trả (`pickup_lat != dropoff_lat` hoặc `pickup_lng != dropoff_lng`), `pickup_address` và `dropoff_address` không rỗng/chỉ chứa khoảng trắng. Nếu sai bất kỳ điều kiện nào $\rightarrow$ Trả `VALIDATION_ERROR` (400).
+2. **Kiểm tra nhanh chuyến active của khách:** Thực hiện `SELECT id FROM trips WHERE customer_id = <user_id> AND status IN ('CREATED', 'MATCHING', 'ACCEPTED', 'PICKING_UP', 'IN_TRIP') LIMIT 1;`. Nếu tìm thấy chuyến $\rightarrow$ Trả ngay `ACTIVE_TRIP_EXISTS` (409) mà không cần gọi tiếp `pricing-service` hay `payment-service`. (Partial unique index `idx_trips_active_customer` ở bước INSERT sau này đóng vai trò lưới an toàn cuối cùng chống đua đồng thời).
+3. **Lấy báo giá:** Gọi nội bộ `POST /internal/v1/pricing/estimate` lấy `fare`, `distance_m`, `surge_multiplier`. Nếu `pricing-service` trả lỗi `VALIDATION_ERROR` (400) $\rightarrow$ dispatch trả lại mã lỗi `VALIDATION_ERROR` (400). Nếu lỗi mạng, timeout hoặc 5xx $\rightarrow$ Trả `SERVICE_UNAVAILABLE` (503).
+4. **Kiểm tra ví:** Gọi nội bộ `POST /internal/v1/wallets/check-balance` với `user_id` và `required_amount = fare`. Nếu `sufficient = false` $\rightarrow$ Trả `INSUFFICIENT_BALANCE` (400). Nếu lỗi mạng, timeout hoặc 5xx $\rightarrow$ Trả `SERVICE_UNAVAILABLE` (503). Nếu nhận lỗi 400 (dispatch gửi sai) $\rightarrow$ Log `ERROR` và trả `SERVICE_UNAVAILABLE` (503).
+5. **Tính Geohash:** Tính chuỗi `pickup_geohash5` chuẩn độ dài 5 từ tọa độ đón.
+6. **Giao dịch DB INSERT chuyến:** Mở transaction DB:
+   - Chèn bản ghi vào `trips` với `status = 'MATCHING'`, `matching_expires_at = now() + (MATCHING_TIMEOUT_SECONDS * interval '1 second')`, `fare` cố định, `pickup_geohash5` kèm mệnh đề `RETURNING matching_expires_at, created_at;` để dùng trực tiếp cho response và pub/sub mà không cần SELECT lại.
    - Nếu vi phạm partial index `idx_trips_active_customer` $\rightarrow$ Rollback DB, trả lỗi `ACTIVE_TRIP_EXISTS` (409).
    - Chèn 2 dòng vào `status_timeline` trong cùng transaction: dòng 1 `status = 'CREATED'`, tiếp theo dòng 2 `status = 'MATCHING'`. Commit transaction.
-6. **Phát sự kiện tạo chuyến:** Ghi vào Redis Stream:
+7. **Phát sự kiện tạo chuyến:** Ghi vào Redis Stream:
    `XADD stream:trip_events MAXLEN ~ 5000 * type TripCreated version "1.0" trip_id <id> customer_id <cid> pickup_geohash5 <geo5> created_at <utc>`.
    Nếu `XADD` lỗi $\rightarrow$ chỉ log `WARN` và tiếp tục luồng.
-7. **Tìm kiếm & Ghép tài xế:**
-   - Gọi `POST /internal/v1/locations/candidates` với `radius_km = OFFER_RADIUS_KM` (mặc định 5 km) lấy ~20 tài xế có GPS $\le 15\text{s}$.
+8. **Tìm kiếm & Ghép tài xế:**
+   - Gọi `POST /internal/v1/locations/candidates` với `radius_km = OFFER_RADIUS_KM` (mặc định 5 km) lấy tối đa 50 tài xế có GPS $\le 15\text{s}$.
    - Nếu `candidates` rỗng $\rightarrow$ coi như 0 tài xế (không gọi `filter-online`).
    - Nếu `candidates` không rỗng: trích xuất mảng `driver_ids`, gọi MỘT lần `POST /internal/v1/users/filter-online` để lọc tài xế đang `ONLINE`. Khớp lại với candidates để lấy `distance_m`, sắp xếp tăng dần theo `distance_m`, cắt lấy Top 3–5 ứng viên gần nhất.
-   - **Xử lý lỗi phụ thuộc:** Nếu gọi `location-service` hoặc `user-service` bị lỗi/timeout (sau khi đã INSERT):
+   - **Xử lý lỗi phụ thuộc:** Nếu gọi `location-service` hoặc `user-service` bị lỗi mạng/timeout/5xx, hoặc nhận 400 từ location/user (dispatch gửi sai cú pháp, log `ERROR`), sau khi đã INSERT:
      - `UPDATE trips SET status = 'EXPIRED', updated_at = now() WHERE id = <trip_id> AND status = 'MATCHING'`.
      - Ghi `status_timeline` (`status = 'EXPIRED'`, `note = 'NO_DRIVERS_AVAILABLE'`).
      - `XADD stream:trip_events MAXLEN ~ 5000 * type TripExpired version "1.0" trip_id <id> reason "NO_DRIVERS_AVAILABLE" expired_at <utc>`.
      - `PUBLISH ride:trip_updates {"trip_id": "<id>", "customer_id": "<cid>", "driver_id": null, "status": "EXPIRED", "updated_at": "<utc>"}`.
      - Trả HTTP 503 `SERVICE_UNAVAILABLE`.
-8. **Phân nhánh kết quả:**
+9. **Phân nhánh kết quả:**
    - **Nhánh không có tài xế (0 ONLINE, không lỗi):**
      - Cập nhật DB: `UPDATE trips SET status = 'EXPIRED', updated_at = now() WHERE id = <trip_id> AND status = 'MATCHING'`.
      - Ghi `status_timeline` (`status = 'EXPIRED'`, `note = 'NO_DRIVERS_AVAILABLE'`).
@@ -137,8 +140,10 @@ sequenceDiagram
 
     Driver->>Dispatch: POST /api/v1/trips/:id/accept
     Note over Dispatch: Kiểm tra vai trò: role == DRIVER (sai: 403 FORBIDDEN)
-    Note over Dispatch: (1) Kiểm tra nhanh: driver trong invited_drivers? status == MATCHING?
-    alt Không được mời / status sai
+    Note over Dispatch: (1) Kiểm tra nhanh: nếu chuyến đã ACCEPTED và driver_id == caller -> trả ngay 200 OK (idempotent); driver trong invited_drivers? status == MATCHING?
+    alt Đã nhận bởi chính mình (idempotent)
+        Dispatch-->>Driver: 200 OK (idempotent)
+    else Không được mời / status sai
         Dispatch-->>Driver: 403 NOT_OFFERED / 409 TRIP_ALREADY_TAKEN / 400 INVALID_TRIP_STATUS
     end
 
@@ -162,9 +167,9 @@ sequenceDiagram
         else Thành công chuyển BUSY (200)
             UserSvc-->>Dispatch: 200 OK
 
-            Note over Dispatch,DB: (4) UPDATE trips SET status='ACCEPTED', driver_id=A WHERE id=trip_id AND status='MATCHING'
-            Dispatch->>DB: UPDATE trips SET status='ACCEPTED', driver_id=A...
-            alt 0 dòng affected (xung đột trạng thái)
+            Note over Dispatch,DB: (4) UPDATE trips SET status='ACCEPTED', driver_id=A WHERE id=trip_id AND status='MATCHING' AND matching_expires_at > now()
+            Dispatch->>DB: UPDATE trips SET status='ACCEPTED', driver_id=A WHERE id=trip_id AND status='MATCHING' AND matching_expires_at > now()
+            alt 0 dòng affected (xung đột trạng thái / hết hạn)
                 DB-->>Dispatch: 0 rows affected
                 Dispatch->>UserSvc: Rollback: Chuyển tài xế BUSY -> ONLINE
                 Dispatch->>Redis: Lua compare-and-delete ride:lock:<trip_id>
@@ -184,31 +189,31 @@ sequenceDiagram
 
 ### 4.3. Luồng Tiến trình chuyến đi (UC-20)
 - **Đón khách (`PICKING_UP`):**
-  - Thực thi: `UPDATE trips SET status = 'PICKING_UP', updated_at = now() WHERE id = <trip_id> AND driver_id = <user_id> AND status = 'ACCEPTED'`.
+  - Thực thi: `UPDATE trips SET status = 'PICKING_UP', updated_at = now() WHERE id = <trip_id> AND driver_id = <user_id> AND status = 'ACCEPTED' RETURNING customer_id;`
   - Nếu 0 dòng affected: `SELECT` chuyến từ DB để phân biệt:
     - Nếu không tìm thấy chuyến $\rightarrow$ Trả `TRIP_NOT_FOUND` (404).
     - Nếu `driver_id != <user_id>` $\rightarrow$ Trả `FORBIDDEN` (403).
     - Nếu trạng thái khác `ACCEPTED` $\rightarrow$ Trả `INVALID_TRIP_STATUS` (400).
-  - Nếu thành công (1 dòng): (1) Ghi `status_timeline`, (2) `PUBLISH ride:trip_updates {"trip_id":"...","customer_id":"...","driver_id":"...","status":"PICKING_UP","updated_at":"<utc>"}`, trả 200 OK (lỗi bước phụ log ERROR).
+  - Nếu thành công (1 dòng): (1) Ghi `status_timeline`, (2) dùng `customer_id` trả về để `PUBLISH ride:trip_updates {"trip_id":"...","customer_id":"...","driver_id":"...","status":"PICKING_UP","updated_at":"<utc>"}`, trả 200 OK (lỗi bước phụ log ERROR).
 - **Bắt đầu chở (`IN_TRIP`):**
-  - Thực thi: `UPDATE trips SET status = 'IN_TRIP', updated_at = now() WHERE id = <trip_id> AND driver_id = <user_id> AND status = 'PICKING_UP'`.
+  - Thực thi: `UPDATE trips SET status = 'IN_TRIP', updated_at = now() WHERE id = <trip_id> AND driver_id = <user_id> AND status = 'PICKING_UP' RETURNING customer_id;`
   - Nếu 0 dòng affected: `SELECT` chuyến từ DB để phân biệt:
     - Nếu không tìm thấy chuyến $\rightarrow$ Trả `TRIP_NOT_FOUND` (404).
     - Nếu `driver_id != <user_id>` $\rightarrow$ Trả `FORBIDDEN` (403).
     - Nếu trạng thái khác `PICKING_UP` $\rightarrow$ Trả `INVALID_TRIP_STATUS` (400).
-  - Nếu thành công (1 dòng): (1) Ghi `status_timeline`, (2) `PUBLISH ride:trip_updates {"trip_id":"...","customer_id":"...","driver_id":"...","status":"IN_TRIP","updated_at":"<utc>"}`, trả 200 OK (lỗi bước phụ log ERROR).
+  - Nếu thành công (1 dòng): (1) Ghi `status_timeline`, (2) dùng `customer_id` trả về để `PUBLISH ride:trip_updates {"trip_id":"...","customer_id":"...","driver_id":"...","status":"IN_TRIP","updated_at":"<utc>"}`, trả 200 OK (lỗi bước phụ log ERROR).
 - **Hoàn thành (`COMPLETED`):**
-  - Thực thi: `UPDATE trips SET status = 'COMPLETED', completed_at = now(), updated_at = now() WHERE id = <trip_id> AND driver_id = <user_id> AND status = 'IN_TRIP'`.
+  - Thực thi: `UPDATE trips SET status = 'COMPLETED', completed_at = now(), updated_at = now() WHERE id = <trip_id> AND driver_id = <user_id> AND status = 'IN_TRIP' RETURNING customer_id, fare, completed_at;`
   - Nếu 0 dòng affected: `SELECT` chuyến từ DB để phân biệt:
     - Nếu không tìm thấy chuyến $\rightarrow$ Trả `TRIP_NOT_FOUND` (404).
     - Nếu `driver_id != <user_id>` $\rightarrow$ Trả `FORBIDDEN` (403).
     - Nếu trạng thái khác `IN_TRIP` $\rightarrow$ Trả `INVALID_TRIP_STATUS` (400).
   - Nếu thành công (1 dòng), thực hiện tuần tự theo quy tắc best-effort sau commit (bước phụ lỗi chỉ log `ERROR` và vẫn trả 200 OK):
     1. Ghi dòng `COMPLETED` vào `status_timeline`.
-    2. `XADD stream:trip_events MAXLEN ~ 5000 * type TripCompleted version "1.0" trip_id <id> customer_id <cid> driver_id <did> fare <fare> completed_at <utc>` (*tuyệt đối không gửi commission*).
+    2. Dùng các giá trị trả về để `XADD stream:trip_events MAXLEN ~ 5000 * type TripCompleted version "1.0" trip_id <id> customer_id <cid> driver_id <did> fare <fare> completed_at <utc>` (*tuyệt đối không gửi commission*).
     3. `DEL trip:link:<driver_id>`.
-    4. Gọi nội bộ `user-service`: `POST /internal/v1/drivers/:id/status` với `from_status: "BUSY", to_status: "ONLINE"` để giải phóng tài xế.
-    5. `PUBLISH ride:trip_updates {"trip_id":"...","customer_id":"...","driver_id":"...","status":"COMPLETED","updated_at":"<utc>"}`.
+    4. `PUBLISH ride:trip_updates {"trip_id":"...","customer_id":"...","driver_id":"...","status":"COMPLETED","updated_at":"<utc>"}`.
+    5. Giải phóng tài xế: Gọi nội bộ `user-service`: `POST /internal/v1/drivers/:id/status` với `from_status: "BUSY", to_status: "ONLINE"`, chạy trước khi trả 200; khi lỗi mạng/timeout tốn tối đa ~1,5 giây (3 lần × ~500 ms), chấp nhận được. Chỉ retry khi gặp lỗi mạng hoặc timeout (tối đa 3 lần, timeout ngắn ~500ms mỗi lần); nếu nhận `DRIVER_NOT_AVAILABLE` thì KHÔNG retry. Nếu vẫn thất bại sau retry $\rightarrow$ log `ERROR` (tài xế kẹt BUSY xử lý theo runbook vận hành Kế hoạch triển khai).
     6. Trả 200 OK.
 
 ### 4.4. Luồng Hủy chuyến & Admin Force-Cancel (UC-21, UC-30)
@@ -223,9 +228,9 @@ sequenceDiagram
   - Nếu sai trạng thái hủy (chuyến đã kết thúc `COMPLETED`, `CANCELLED`, `EXPIRED`,...) $\rightarrow$ Trả `INVALID_TRIP_STATUS` (400).
 - **Xử lý sau hủy thành công (1 dòng affected, best-effort sau commit):**
   1. Ghi `status_timeline` (`status = 'CANCELLED'`).
-  2. Dựa vào `driver_id` trả về: nếu khác null $\rightarrow$ `DEL trip:link:<driver_id>`, và gọi `user-service`: `POST /internal/v1/drivers/:id/status` (`from_status: "BUSY", to_status: "ONLINE"`).
-  3. `XADD stream:trip_events MAXLEN ~ 5000 * type TripCancelled version "1.0" trip_id <id> cancelled_at <utc>` (*tuyệt đối không gửi cancelled_by*).
-  4. `PUBLISH ride:trip_updates {"trip_id":"...","customer_id":<customer_id>,"driver_id":<driver_id_hoặc_null>,"status":"CANCELLED","updated_at":"<utc>"}`.
+  2. `XADD stream:trip_events MAXLEN ~ 5000 * type TripCancelled version "1.0" trip_id <id> cancelled_at <utc>` (*tuyệt đối không gửi cancelled_by*).
+  3. `PUBLISH ride:trip_updates {"trip_id":"...","customer_id":<customer_id>,"driver_id":<driver_id_hoặc_null>,"status":"CANCELLED","updated_at":"<utc>"}`.
+  4. Nếu `driver_id` khác null: `DEL trip:link:<driver_id>`, và gọi `user-service`: `POST /internal/v1/drivers/:id/status` (`from_status: "BUSY", to_status: "ONLINE"`), chạy trước khi trả 200; khi lỗi mạng/timeout tốn tối đa ~1,5 giây (3 lần × ~500 ms), chấp nhận được. Chỉ retry khi gặp lỗi mạng hoặc timeout (tối đa 3 lần, timeout ngắn ~500ms mỗi lần); nếu nhận `DRIVER_NOT_AVAILABLE` thì KHÔNG retry. Nếu vẫn thất bại sau retry $\rightarrow$ log `ERROR` (tài xế kẹt BUSY xử lý theo runbook vận hành Kế hoạch triển khai).
   5. Trả 200 OK.
 
 ### 4.5. Tiến trình Quét chuyến Quá hạn (Background Sweeper Worker)
@@ -244,9 +249,9 @@ sequenceDiagram
 
 | Tình huống ngoại lệ | Ngữ cảnh phát sinh | Hành vi xử lý & Mã lỗi |
 | :--- | :--- | :--- |
-| Đặt trùng chuyến | Khách bấm đặt xe 2 lần đồng thời | Vi phạm Partial Unique Index `idx_trips_active_customer` $\rightarrow$ Rollback DB, trả `ACTIVE_TRIP_EXISTS` (409). |
+| Đặt trùng chuyến | Khách bấm đặt xe 2 lần đồng thời | Phát hiện sớm qua SELECT kiểm tra chuyến active $\rightarrow$ trả `ACTIVE_TRIP_EXISTS` (409); nếu đua đồng thời vượt qua SELECT thì vi phạm Partial Unique Index `idx_trips_active_customer` khi INSERT $\rightarrow$ Rollback DB, trả `ACTIVE_TRIP_EXISTS` (409). |
 | Thiếu tiền ví | Khách đặt xe khi ví < fare | `check-balance` trả `sufficient = false` $\rightarrow$ Chặn đặt, trả `INSUFFICIENT_BALANCE` (400). |
-| Service phụ thuộc lỗi | `pricing`, `payment`, `location`, `user` timeout/mất mạng | Không retry vô hạn $\rightarrow$ Trả `SERVICE_UNAVAILABLE` (503). Khi accept gọi user-service lỗi/timeout $\rightarrow$ nhả lock Redis và trả 503. Khi tạo chuyến lỗi location/user sau khi INSERT $\rightarrow$ chuyển EXPIRED, phát event/WS và trả 503. |
+| Service phụ thuộc lỗi | `pricing`, `payment`, `location`, `user` timeout/mất mạng/trả lỗi | Áp dụng quy tắc Mục 4 LLD-00: `pricing` trả 400 `VALIDATION_ERROR` $\rightarrow$ trả lại 400; `location`/`user`/`payment` trả 400 (dispatch gửi sai) $\rightarrow$ log `ERROR` rồi trả 503; lỗi mạng/timeout/5xx $\rightarrow$ trả `SERVICE_UNAVAILABLE` (503). Khi accept gọi `user-service` lỗi/timeout $\rightarrow$ nhả lock Redis và trả 503. Khi tạo chuyến lỗi `location`/`user` sau khi INSERT $\rightarrow$ chuyển `EXPIRED`, phát event/WS và trả 503. |
 | Thua cuộc đua nhận cuốc | 2 tài xế cùng bấm Accept 1 chuyến | Tài xế đến sau nhận `nil` từ Redis `SET NX` $\rightarrow$ Trả `TRIP_ALREADY_TAKEN` (409). |
 | Tài xế không được mời | Tài xế bấm accept chuyến mình không có trong invited_drivers | `NOT_OFFERED` (403). |
 | Tài xế bấm nhận khi đã bận | Tài xế nhận cuốc khác trước đó | `user-service` trả lỗi chuyển trạng thái $\rightarrow$ Nhả lock Redis, trả `DRIVER_NOT_AVAILABLE` (400). |

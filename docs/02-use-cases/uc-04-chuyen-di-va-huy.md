@@ -32,7 +32,7 @@ sequenceDiagram
         
         DispatchSvc->>UserSvc: Chuyển tài xế từ BUSY về ONLINE (nội bộ, không qua api-gateway)
         
-        DispatchSvc->>RedisStreams: XADD stream:trip_events {type: "TripCompleted", trip_id, customer_id, driver_id, fare, timestamp}
+        DispatchSvc->>RedisStreams: XADD stream:trip_events {type: "TripCompleted", version: "1.0", trip_id, customer_id, driver_id, fare, completed_at}
         DispatchSvc->>RedisPubSub: PUBLISH ride:trip_updates {trip_id, status: "COMPLETED"}
         
         DispatchSvc-->>Gateway: 200 OK (Chuyến đi hoàn tất)
@@ -89,7 +89,7 @@ sequenceDiagram
   - *Cập nhật DB trả về 0 dòng affected (ví dụ: Khách hàng cố tình hủy khi `PICKING_UP`, hoặc Khách/Tài xế hủy khi xe đang chạy `IN_TRIP`, hoặc chuyến đã `COMPLETED`/`EXPIRED`):* Bị từ chối với mã lỗi `INVALID_TRIP_STATUS` (HTTP 400).
   - *Người gọi không phải là khách hàng hoặc tài xế của chuyến:* Trả về mã lỗi `FORBIDDEN` (HTTP 403).
 * **Hậu điều kiện:** Chuyến xe kết thúc ở trạng thái `CANCELLED`; tài xế (nếu có) được giải phóng sang `ONLINE`; không phát sinh trừ tiền ví.
-* **Dữ liệu demo cần thấy trên Postman:** `trip_id`, trạng thái mới `CANCELLED`, người thực hiện hủy (`cancelled_by`), thời gian hủy.
+* **Dữ liệu demo cần thấy trên Postman:** `trip_id`, trạng thái `CANCELLED`; xem `cancelled_by` và thời gian hủy qua `GET /api/v1/trips/:id`.
 
 ---
 

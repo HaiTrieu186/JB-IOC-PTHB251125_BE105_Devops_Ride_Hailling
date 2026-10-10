@@ -46,11 +46,11 @@ Gồm đủ **26 endpoint công khai** của hệ thống và endpoint `/health`
 | `POST /api/v1/trips/:id/cancel` | 1 | `DISPATCH_SERVICE_URL` | Có | Mọi role |
 | `GET /api/v1/trips/current` | 1 | `DISPATCH_SERVICE_URL` | Có | Mọi role |
 | `GET /api/v1/trips/:id` | 1 | `DISPATCH_SERVICE_URL` | Có | Mọi role |
-| `POST /api/v1/admin/trips/:id/force-cancel` | 3 | `DISPATCH_SERVICE_URL` | Có | `ADMIN` |
-| `GET /api/v1/admin/trips` | 3 | `DISPATCH_SERVICE_URL` | Có | `ADMIN` (Query: `status`, `page`, `limit`) |
+| `POST /api/v1/admin/trips/:id/force-cancel` | 1 | `DISPATCH_SERVICE_URL` | Có | `ADMIN` |
+| `GET /api/v1/admin/trips` | 1 | `DISPATCH_SERVICE_URL` | Có | `ADMIN` (Query: `status`, `page`, `limit`) |
 | `POST /api/v1/pricing/estimate` | 1 | `PRICING_SERVICE_URL` | Có | Mọi role |
-| `GET /api/v1/admin/pricing/config` | 3 | `PRICING_SERVICE_URL` | Có | `ADMIN` |
-| `PUT /api/v1/admin/pricing/config` | 3 | `PRICING_SERVICE_URL` | Có | `ADMIN` |
+| `GET /api/v1/admin/pricing/config` | 1 | `PRICING_SERVICE_URL` | Có | `ADMIN` |
+| `PUT /api/v1/admin/pricing/config` | 1 | `PRICING_SERVICE_URL` | Có | `ADMIN` |
 | `GET /api/v1/wallets/me` | 1 | `PAYMENT_SERVICE_URL` | Có | Mọi role (service đích từ chối ADMIN) |
 | `POST /api/v1/wallets/top-up` | 1 | `PAYMENT_SERVICE_URL` | Có | Mọi role (service đích từ chối ADMIN) |
 | `GET /api/v1/wallets/transactions` | 1 | `PAYMENT_SERVICE_URL` | Có | Mọi role (service đích từ chối ADMIN) |

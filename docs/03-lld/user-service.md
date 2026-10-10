@@ -61,8 +61,8 @@
 | Method & Path | Tầng | Actor | Request Fields | Response Data Fields | Mã lỗi kích hoạt |
 | :--- | :-: | :--- | :--- | :--- | :--- |
 | `POST /api/v1/auth/register` | 1 | Khách vãng lai | `phone_number` (string, B)<br>`email` (string, T)<br>`password` (string, B, $\ge 6$ ký tự)<br>`full_name` (string, B)<br>`role` ("CUSTOMER" \| "DRIVER", B) | `user_id` (uuid)<br>`role` (string)<br>`full_name` (string)<br>`created_at` (iso8601) | `VALIDATION_ERROR` (400: sai định dạng/pass ngắn)<br>`USER_ALREADY_EXISTS` (409: trùng phone/email) |
-| `POST /api/v1/auth/login` | 1 | Người dùng | `phone_or_email` (string, B)<br>`password` (string, B) | `access_token` (jwt)<br>`refresh_token` (opaque string)<br>`expires_in` (int: 3600)<br>`user` (`{id, role, full_name, driver_status}`) | `VALIDATION_ERROR` (400: thiếu trường)<br>`UNAUTHORIZED` (401: sai tài khoản hoặc mật khẩu) |
-| `POST /api/v1/auth/refresh` | 1 | Người dùng | `refresh_token` (string, B) | `access_token` (jwt)<br>`refresh_token` (opaque string mới)<br>`expires_in` (int: 3600) | `VALIDATION_ERROR` (400: thiếu token)<br>`INVALID_REFRESH_TOKEN` (401: token không tồn tại/đã dùng) |
+| `POST /api/v1/auth/login` | 1 | Người dùng | `phone_or_email` (string, B)<br>`password` (string, B) | `access_token` (jwt)<br>`refresh_token` (opaque string)<br>`expires_in` (int: đọc từ `ACCESS_TOKEN_EXPIRY`)<br>`user` (`{id, role, full_name, driver_status}`) | `VALIDATION_ERROR` (400: thiếu trường)<br>`UNAUTHORIZED` (401: sai tài khoản hoặc mật khẩu) |
+| `POST /api/v1/auth/refresh` | 1 | Người dùng | `refresh_token` (string, B) | `access_token` (jwt)<br>`refresh_token` (opaque string mới)<br>`expires_in` (int: đọc từ `ACCESS_TOKEN_EXPIRY`) | `VALIDATION_ERROR` (400: thiếu token)<br>`INVALID_REFRESH_TOKEN` (401: token không tồn tại/đã dùng) |
 | `POST /api/v1/auth/logout` | 3 | Người dùng | `refresh_token` (string, B) | `message` ("Đăng xuất thành công") | `VALIDATION_ERROR` (400: thiếu refresh_token)<br>`DRIVER_CANNOT_LOGOUT` (400: tài xế đang BUSY)<br>`INVALID_REFRESH_TOKEN` (401: token sai/không chính chủ) |
 | `PATCH /api/v1/driver/status` *(do LLD đặt)* | 1 | `DRIVER` | `status` ("ONLINE" \| "OFFLINE", B) | `driver_id` (uuid)<br>`status` (string) | `FORBIDDEN` (403: role != DRIVER)<br>`VALIDATION_ERROR` (400: sai giá trị)<br>`DRIVER_BUSY` (400: tài xế đang BUSY cố chuyển OFFLINE) |
 | `GET /api/v1/users/me` *(do LLD đặt)* | 3 | Người dùng | *(None)* | `id` (uuid), `phone_number` (string), `email` (string), `full_name` (string), `role` (string), `driver_status` (string\|null) | `UNAUTHORIZED` (401: thiếu thông tin xác thực) |
@@ -76,7 +76,7 @@
 
 | Method & Path | Tầng | Caller | Request Fields | Response Data Fields | Mã lỗi kích hoạt |
 | :--- | :-: | :--- | :--- | :--- | :--- |
-| `POST /internal/v1/users/filter-online` | 1 | `dispatch`<br>`pricing` | `driver_ids` (array of string, B) | `online_driver_ids` (array of string) | `VALIDATION_ERROR` (400: sai kiểu dữ liệu hoặc mảng > 500 phần tử; mảng rỗng [] trả 200 với online_driver_ids = []) |
+| `POST /internal/v1/users/filter-online` | 1 | `dispatch`<br>`pricing` | `driver_ids` (array of string, B) | `online_driver_ids` (array of string) | `VALIDATION_ERROR` (400: sai kiểu dữ liệu, phần tử không phải UUID hợp lệ, hoặc mảng > 500 phần tử; mảng rỗng [] trả 200 với online_driver_ids = []) |
 | `POST /internal/v1/drivers/:id/status` | 1 | `dispatch` | Path: `id` (uuid, B)<br>Body: `from_status` (string, B: "ONLINE" \| "BUSY")<br>`to_status` (string, B: "ONLINE" \| "BUSY") | `driver_id` (uuid)<br>`status` (string) | `VALIDATION_ERROR` (400: thiếu/sai trường hoặc cặp trạng thái khác (ONLINE->BUSY) và (BUSY->ONLINE))<br>`DRIVER_NOT_AVAILABLE` (400: trạng thái hiện tại khác from_status hoặc không tìm thấy) |
 
 ---
@@ -85,7 +85,7 @@
 
 ### 4.1. Đăng ký & Đăng nhập (UC-01, UC-02)
 - **Đăng ký:** Validate dữ liệu $\rightarrow$ Kiểm tra trùng lặp `phone_number` / `email` trong `users` (nếu có $\rightarrow$ `USER_ALREADY_EXISTS` 409) $\rightarrow$ Băm mật khẩu bằng `bcrypt.GenerateFromPassword(pwd, 10)` $\rightarrow$ INSERT `users` (`role = CUSTOMER` thì `driver_status = NULL`; `role = DRIVER` thì `driver_status = 'OFFLINE'`). Trả về 201 Created.
-- **Đăng nhập:** Tra cứu người dùng theo `phone_number` hoặc `email` $\rightarrow$ So khớp `bcrypt.CompareHashAndPassword` (thất bại $\rightarrow$ `UNAUTHORIZED` 401) $\rightarrow$ Sinh JWT Access Token (claims: `user_id`, `role`, `exp = now + 3600`, `jti = uuid()`) $\rightarrow$ Sinh Refresh Token ngẫu nhiên (opaque UUID) $\rightarrow$ Lưu Redis: `SET refresh:<token> <user_id> EX 604800` (7 ngày). Trả về 200 OK kèm cặp token.
+- **Đăng nhập:** Tra cứu người dùng theo `phone_number` hoặc `email` $\rightarrow$ So khớp `bcrypt.CompareHashAndPassword` (thất bại $\rightarrow$ `UNAUTHORIZED` 401) $\rightarrow$ Sinh JWT Access Token (claims: `user_id`, `role`, `exp = now + ACCESS_TOKEN_EXPIRY`, `jti = uuid()`) $\rightarrow$ Sinh Refresh Token ngẫu nhiên (opaque UUID) $\rightarrow$ Lưu Redis: `SET refresh:<token> <user_id> EX 604800` (7 ngày). Trả về 200 OK kèm cặp token và `expires_in` (đọc từ biến ENV `ACCESS_TOKEN_EXPIRY`, mặc định 3600).
 
 ### 4.2. Xoay vòng Refresh Token nguyên tử (UC-08)
 1. Tiếp nhận `refresh_token` từ request body.
@@ -93,9 +93,9 @@
 3. Nếu kết quả trả về `nil` (token không tồn tại, hết hạn, hoặc đã bị request khác dùng): Trả ngay `INVALID_REFRESH_TOKEN` (401).
 4. Nếu tìm thấy `user_id`:
    - Truy vấn thông tin người dùng từ `userdb` để lấy `role` hiện tại.
-   - Sinh Access Token mới (kèm `jti` mới, thời hạn 1 giờ).
+   - Sinh Access Token mới (kèm `jti` mới, thời hạn đọc từ ENV `ACCESS_TOKEN_EXPIRY`).
    - Sinh Refresh Token mới và lưu Redis: `SET refresh:<new_token> <user_id> EX 604800`.
-   - Trả về 200 OK với cặp token mới.
+   - Trả về 200 OK với cặp token mới kèm `expires_in` (đọc từ biến ENV `ACCESS_TOKEN_EXPIRY`).
 
 ### 4.3. Đăng xuất & Thu hồi phiên (UC-09)
 1. **Xác thực Refresh Token trước:** Nhận `refresh_token` từ request body. Thực hiện `GET refresh:<token>`. Nếu giá trị trả về khác `user_id` (từ header `X-User-Id`) hoặc `nil` $\rightarrow$ Trả `INVALID_REFRESH_TOKEN` (401), chưa thay đổi bất kỳ trạng thái nào.
@@ -113,11 +113,11 @@
 ### 4.4. Cập nhật trạng thái Tài xế (UC-04)
 - Nhận yêu cầu đổi sang `ONLINE` hoặc `OFFLINE`.
 - Nếu chuyển sang `OFFLINE`: Thực thi UPDATE có điều kiện `UPDATE users SET driver_status = 'OFFLINE', updated_at = now() WHERE id = <user_id> AND role = 'DRIVER' AND driver_status != 'BUSY'`. Nếu 0 dòng affected (tài xế đang `BUSY`) $\rightarrow$ Trả `DRIVER_BUSY` (400).
-- Nếu chuyển sang `ONLINE`: `UPDATE users SET driver_status = 'ONLINE', updated_at = now() WHERE id = <user_id> AND role = 'DRIVER' AND driver_status != 'BUSY'`. Nếu 0 dòng $\rightarrow$ Trả `DRIVER_BUSY` (400). Trả về 200 OK.
+- Nhận yêu cầu đổi sang `ONLINE`: `UPDATE users SET driver_status = 'ONLINE', updated_at = now() WHERE id = <user_id> AND role = 'DRIVER' AND driver_status != 'BUSY'`. Nếu 0 dòng $\rightarrow$ Trả `DRIVER_BUSY` (400). Trả về 200 OK.
 
 ### 4.5. Xử lý API Nội bộ cho Dispatch / Pricing
 - **`POST /internal/v1/users/filter-online`:**
-  - Nhận mảng `driver_ids`. Mảng rỗng `[]` trả về ngay 200 OK với `{"online_driver_ids": []}`. Nếu sai kiểu dữ liệu hoặc mảng $> 500$ phần tử $\rightarrow$ Trả `VALIDATION_ERROR` (400).
+  - Nhận mảng `driver_ids`. Mảng rỗng `[]` trả về ngay 200 OK với `{"online_driver_ids": []}`. Validate dữ liệu: mảng không được vượt quá 500 phần tử, và từng phần tử trong mảng BẮT BUỘC phải là chuỗi UUID hợp lệ; nếu sai kiểu dữ liệu, vượt quá 500 phần tử, hoặc có phần tử không phải UUID hợp lệ $\rightarrow$ Trả `VALIDATION_ERROR` (400) (tránh lỗi cú pháp UUID của PostgreSQL mã 22P02 bị hiểu lầm thành lỗi 500).
   - Thực thi: `SELECT id FROM users WHERE id IN (<driver_ids>) AND role = 'DRIVER' AND driver_status = 'ONLINE'`.
   - Trả về danh sách `online_driver_ids: []`.
 - **`POST /internal/v1/drivers/:id/status`:**

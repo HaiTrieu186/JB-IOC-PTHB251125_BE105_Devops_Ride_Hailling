@@ -41,8 +41,8 @@ sequenceDiagram
             end
             
             Note over DispatchSvc: TUYỆT ĐỐI KHÔNG TRỪ PHẠT VÍ (Tuân thủ FR-25)
-            DispatchSvc->>RedisStreams: XADD stream:trip_events {type: "TripCancelled", trip_id, by: "ADMIN"}
-            DispatchSvc->>RedisPubSub: PUBLISH ride:trip_updates {trip_id, status: "CANCELLED", by: "ADMIN"}
+            DispatchSvc->>RedisStreams: XADD stream:trip_events {type: "TripCancelled", version: "1.0", trip_id, cancelled_at}
+            DispatchSvc->>RedisPubSub: PUBLISH ride:trip_updates {trip_id, customer_id, driver_id, status: "CANCELLED", updated_at}
             
             DispatchSvc-->>Gateway: 200 OK (Đã hủy cưỡng bức chuyến thành công)
             Gateway-->>Admin: 200 OK (Giải phóng tài nguyên và tài xế thành công!)

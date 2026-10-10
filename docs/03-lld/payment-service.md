@@ -40,7 +40,7 @@
 | `note` | `TEXT` | NULLABLE | Ghi chú lý do thất bại (ví dụ: `INSUFFICIENT_FUNDS_ON_COMPLETE`). |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` | Thời gian ghi nhận giao dịch UTC. |
 
-- **Chỉ mục & Ràng buộc toàn vẹn:** Các partial index và CHECK tạo bằng SQL migration thô hoặc GORM tag where.
+- **Chỉ mục & Ràng buộc toàn vẹn:** Tạo bằng raw SQL theo quy ước Mục 5(l) Hợp đồng LLD-00 (không dùng GORM tag where).
   - PK: `id`.
   - CHECK type: `CHECK (type IN ('TRIP_PAYMENT', 'TRIP_INCOME', 'COMMISSION', 'TOPUP'))`.
   - CHECK status: `CHECK (status IN ('SUCCESS', 'FAILED'))`.
@@ -147,8 +147,8 @@
 ### 4.6. Khởi động và Vận hành Consumer Stream
 1. Goroutine worker tiêu thụ stream chạy nền độc lập, lắng nghe `ctx.Done()` để dừng êm (graceful shutdown).
 2. Tự khởi tạo group: `XGROUP CREATE stream:trip_events payment-group 0 MKSTREAM`. Bỏ qua lỗi `BUSYGROUP`.
-3. **Vòng lặp tiêu thụ tin nhắn:**
-   - *Quét tồn đọng PEL:* Định kỳ mỗi 2–5 giây trong vòng lặp chính (không chỉ lúc khởi động), gọi `XREADGROUP GROUP payment-group payment-consumer-1 STREAMS stream:trip_events 0` để đọc lại và xử lý các message còn treo trong PEL cho tới khi hết.
+3. **Vòng lặp tiêu thụ tin nhắn (Quy tắc Mục 5(m) Hợp đồng LLD-00):**
+   - *Đọc tồn đọng PEL:* Mỗi chu kỳ (2–5 giây) gọi ĐÚNG 1 lượt `XREADGROUP GROUP payment-group payment-consumer-1 COUNT <PEL_BATCH_COUNT> STREAMS stream:trip_events 0` (KHÔNG lặp cho tới khi hết). Đếm số lần giao bằng `XPENDING` (delivery count) hoặc bộ đếm RAM `map[msg_id]int` (dọn khi XACK). Vượt trần `MAX_DELIVERY_ATTEMPTS` thì log `ERROR` rồi `XACK`. Nếu gặp lỗi vi phạm Unique Constraint (Postgres code 23505) thì coi là duplicate $\rightarrow$ `XACK` và bỏ qua.
    - *Đọc tin mới:* Gọi `XREADGROUP GROUP payment-group payment-consumer-1 BLOCK 2000 STREAMS stream:trip_events >`.
 4. Sau khi giao dịch DB commit thành công, lệnh `XACK` nếu lỗi chỉ log `ERROR` và tiếp tục (message nằm trong PEL sẽ được bỏ qua ở lần chạy sau nhờ Idempotency).
 
@@ -162,9 +162,9 @@
 | Phân trang không hợp lệ | `page < 1` hoặc `limit` ngoài [1, 100] | Trả `VALIDATION_ERROR` (400). |
 | Kiểm tra số dư sai input | `required_amount < 0` hoặc sai user_id | Trả `VALIDATION_ERROR` (400). |
 | Khách thiếu tiền lúc hoàn thành | Ví khách $< fare$ khi xử lý `TripCompleted` | Không trừ âm, ghi dòng `TRIP_PAYMENT` với `status = 'FAILED'`, log ERROR, vẫn gửi XACK. |
-| Event bị giao lặp lại (Duplicate) | Consumer restart hoặc mạng chập chờn | `transactions` đã có `trip_id` $\rightarrow$ XACK và bỏ qua xử lý, chống trùng tiền. |
+| Event bị giao lặp lại (Duplicate) | Consumer restart hoặc mạng chập chờn | `transactions` đã có `trip_id` (hoặc vi phạm unique 23505) $\rightarrow$ XACK và bỏ qua xử lý, chống trùng tiền. |
 | Message Stream hỏng | Thiếu trường, UUID sai, fare $\le 0$, hoặc entry rỗng | Log ERROR, gửi XACK loại bỏ tin nhắn hỏng. |
-| Lỗi DB tạm thời lúc tiêu thụ stream | Lỗi kết nối PostgreSQL khi xử lý thanh toán | KHÔNG XACK, giữ trong PEL để xử lý lại sau 2–5s. |
+| Lỗi DB tạm thời lúc tiêu thụ stream | Lỗi kết nối PostgreSQL khi xử lý thanh toán | KHÔNG XACK, giữ trong PEL để xử lý lại sau 2–5s (tối đa `MAX_DELIVERY_ATTEMPTS` lần). |
 | Lỗi XACK sau commit DB | Redis timeout/mất mạng lúc gửi XACK | Log ERROR, không rollback DB. Message trong PEL sẽ được idempotency bỏ qua khi quét lại. |
 | Admin gọi API ví | Người dùng có vai trò `ADMIN` gọi ví | Trả `FORBIDDEN` (403: Admin không sở hữu ví). |
 
@@ -200,6 +200,8 @@
 | `REDIS_PASSWORD` | `redis_secret_pass` | Mật khẩu xác thực kết nối Redis (demo, ghi đè trong .env). |
 | `COMMISSION_RATE` | `15` | Phần trăm hoa hồng hệ thống trích từ giá cước chuyến đi (nguyên). |
 | `TOPUP_MAX_AMOUNT` | `100000000` | Số tiền nạp ví tối đa cho phép trong một lần giao dịch (VND, 100.000.000 VND). |
+| `MAX_DELIVERY_ATTEMPTS` | `5` | Số lần thử lại tối đa trước khi loại bỏ message hỏng khỏi PEL (Mục 5(m) LLD-00). |
+| `PEL_BATCH_COUNT` | `10` | Số lượng message tối đa đọc mỗi chu kỳ quét PEL (Mục 5(m) LLD-00). |
 
 ### 7.2. Tài nguyên & Thứ tự khởi động
 - **Connection Pool PostgreSQL (Mục 5(h) LLD-00):** `MaxOpenConns = 10`, `MaxIdleConns = 3`, `ConnMaxLifetime = 30m`.

@@ -1,6 +1,6 @@
 # HỢP ĐỒNG GIAO TIẾP LIÊN SERVICE (INTER-SERVICE CONTRACT)
 
-> **Mã tài liệu:** `LLD-00` | **Phiên bản:** 1.1  
+> **Mã tài liệu:** `LLD-00` | **Phiên bản:** 1.2  
 > **Tài liệu căn cứ:** [AGENTS.md](../../AGENTS.md), [SRS v1.5](../01-srs/srs.md), [Use Cases v1.1](../02-use-cases/00-use-case-tong-quat.md), [Quyết định chốt](../00-brainstorm/quyet-dinh.md)  
 > **Nguyên tắc cốt lõi:** Văn bản duy nhất chuẩn hóa giao tiếp liên microservice; cấm vi phạm ranh giới Database-per-Service.
 
@@ -52,7 +52,7 @@ flowchart TD
 | `trip:link:<driver_id>` | String | `dispatch-service` | `ws-gateway` | 3 giờ | JSON `{"trip_id": string, "customer_id": string}` (stream GPS FR-38) |
 | `demand:geo:<geohash5>` | ZSET | `pricing-service` | `pricing-service` | 5 phút (`300s`) | Score: Unix Timestamp UTC, Member: `trip_id` (đếm Demand cửa sổ trượt 5p) |
 | `ride:trip_offers` | Pub/Sub | `dispatch-service` | `ws-gateway` | N/A | Bản tin mời cuốc: `{trip_id, targets: [{driver_id, distance_m}], pickup_lat, pickup_lng, fare, driver_fare, expire_at}` (`driver_fare = fare - commission`, chỉ để hiển thị). ws-gateway đẩy cho mỗi tài xế chỉ distance_m của chính tài xế đó (tra trong targets), không đẩy cả danh sách. |
-| `ride:trip_updates` | Pub/Sub | `dispatch-service` | `ws-gateway` | N/A | Bản tin tiến trình: `{trip_id, customer_id, driver_id, status, updated_at}` (driver_id = null khi chưa có tài xế (MATCHING, hoặc bị hủy/hết hạn trước khi ACCEPTED); ws-gateway bỏ qua bước đẩy cho tài xế nếu null, vẫn đẩy cho khách). |
+| `ride:trip_updates` | Pub/Sub | `dispatch-service` | `ws-gateway` | N/A | Bản tin tiến trình: `{trip_id, customer_id, driver_id, status, updated_at}` (driver_id = null khi bị hủy/hết hạn trước ACCEPTED; dispatch KHÔNG phát ride:trip_updates lúc MATCHING do khách nhận trạng thái ban đầu từ response 201; ws-gateway bỏ qua bước đẩy cho tài xế nếu driver_id null, vẫn đẩy cho khách). |
 | `ride:ws_control` | Pub/Sub | `user-service` | `ws-gateway` | N/A | Bản tin điều khiển kết nối: `{"action": "DISCONNECT", "user_id": string}` |
 | `stream:trip_events` | Stream | `dispatch-service` | Consumer Groups | `MAXLEN ~ 5000` | Stream vòng đời chuyến. Consumer Groups: `payment-group`, `ai-group`, `pricing-group` |
 
@@ -80,6 +80,8 @@ Mọi sự kiện trong `stream:trip_events` đều có trường `type` tương
 - **Bảo mật Header:** `api-gateway` xóa sạch header `X-User-*` từ client; giải mã JWT hợp lệ rồi gắn `X-User-Id` và `X-User-Role` chuyển tiếp vào nội bộ.
 - **Payload JWT Claims:** Gồm đúng 4 trường: `user_id` (UUID/string), `role` (`CUSTOMER` | `DRIVER` | `ADMIN`), `exp` (int64 epoch), `jti` (UUID).
 - **Đơn vị tiền tệ & thời gian:** Tiền tệ là số nguyên VND (`int64`, không dùng số thực). Thời gian là chuỗi ISO 8601 UTC (`YYYY-MM-DDTHH:MM:SSZ`).
+- **Dải tọa độ DUY NHẤT toàn hệ thống:** Vĩ độ thuộc `[-85.05112878, 85.05112878]` (chuẩn Mercator của Redis GEO), kinh độ thuộc `[-180, 180]`. Mọi service bắt buộc validate theo dải này và tham chiếu về đây, không tự khai riêng.
+- **Quy tắc ánh xạ lỗi service phụ cho dispatch:** Khi gọi service phụ thuộc: nếu `pricing-service` trả 400 `VALIDATION_ERROR` thì `dispatch-service` trả lại `VALIDATION_ERROR` cho client; nếu nhận HTTP 400 từ `location-service`, `user-service`, hoặc `payment-service` nghĩa là dispatch gửi sai request nội bộ $\rightarrow$ log `ERROR` và trả 503 `SERVICE_UNAVAILABLE`; mọi lỗi mạng, timeout hoặc 5xx từ service phụ $\rightarrow$ trả 503 `SERVICE_UNAVAILABLE`.
 - **Danh mục mã lỗi nghiệp vụ chuẩn:** Gồm 16 mã lỗi chuẩn toàn hệ thống (14 mã lỗi từ Use Case tổng quát, bổ sung mã `NOT_FOUND` (HTTP 404) và `SERVICE_UNAVAILABLE` (HTTP 503)):
   - `400`: `VALIDATION_ERROR`, `INSUFFICIENT_BALANCE`, `DRIVER_NOT_AVAILABLE`, `DRIVER_BUSY`, `DRIVER_CANNOT_LOGOUT`, `INVALID_TRIP_STATUS`.
   - `401`: `UNAUTHORIZED`, `INVALID_REFRESH_TOKEN`.
@@ -102,13 +104,17 @@ Mọi sự kiện trong `stream:trip_events` đều có trường `type` tương
 - **(d) Tiến trình quét chuyến quá hạn:** Chạy ngầm tại `dispatch-service` định kỳ mỗi 2 giây và chạy quét ngay 1 lần lúc service khởi động để giải phóng các chuyến kẹt.
 - **(e) Phạm vi địa lý Demand/Supply:** Chỉ tính toán trong phạm vi duy nhất 1 ô Geohash độ dài 5 ký tự (khoảng 4.9 km × 4.9 km), không quét thêm 8 ô lân cận.
 - **(f) Tài xế BUSY mồ côi (Orphaned BUSY Driver):** Trường hợp hy hữu `dispatch-service` sập nguồn giữa lúc đổi tài xế `BUSY` và update `ACCEPTED` chuyến, tài xế kẹt `BUSY` sẽ reset thủ công trạng thái tài xế về ONLINE trong userdb, ghi vào mục vận hành.
-- **(g) Giới hạn bộ nhớ và phiên bản Redis:** Redis `maxmemory 50mb`, `mem_limit` container Redis là 60M, `maxmemory-policy noeviction`. Yêu cầu Redis >= 6.2 (cần cho `GEOSEARCH` và `GETDEL`), ví dụ dùng image `redis:7-alpine`.
+- **(g) Giới hạn bộ nhớ và phiên bản Redis:** Redis `maxmemory 50mb`, `mem_limit` container Redis là 60M, `maxmemory-policy noeviction`. Persistence: `appendonly yes`, `appendfsync everysec`, named volume cho thư mục data (lý do: restart/recreate Redis không được làm mất stream chưa xử lý, refresh token, blacklist). Yêu cầu Redis >= 6.2 (cần cho `GEOSEARCH` và `GETDEL`), ví dụ dùng image `redis:7-alpine`.
 - **(h) Giới hạn Connection Pool & Bộ nhớ Go:**
-  - Container PostgreSQL dùng chung cấu hình `max_connections = 50`.
+  - Container PostgreSQL dùng chung cấu hình `max_connections = 50`, `shared_buffers=32MB`, `work_mem=2MB`, `maintenance_work_mem=16MB`; cân nhắc `mem_limit` Postgres 200 MB (ngân sách 850 MB sát, bắt buộc đo `docker stats` với 100 tài xế ảo).
   - Connection Pool từng service Go: `user-service` (MaxOpen: 5, MaxIdle: 2), `dispatch-service` (MaxOpen: 10, MaxIdle: 3), `pricing-service` (MaxOpen: 5, MaxIdle: 2), `payment-service` (MaxOpen: 10, MaxIdle: 3), `ai-service` (MaxOpen: 5, MaxIdle: 2). (Tổng: 35 connections ≤ 50).
-  - RAM toàn hệ thống $\le 850\text{ MB}$. Đề xuất `mem_limit` mỗi Go service từ 25 – 40 MB (mức 15 MB trong NFR-02 có nguy cơ thiếu, cần đo thực tế lúc deploy rồi tinh chỉnh); cấu hình `GOMEMLIMIT` tương ứng ở mức 85%–90% `mem_limit` (22MiB – 35MiB) để kích hoạt GC sớm chống OOM.
+  - RAM toàn hệ thống $\le 850\text{ MB}$. Đề xuất `mem_limit` mỗi Go service từ 25 – 40 MB; cấu hình `GOMEMLIMIT` tương ứng ở mức 85%–90% `mem_limit` (22MiB – 35MiB) để kích hoạt GC sớm chống OOM.
 - **(i) Giải phóng Distributed Lock an toàn:** Thu hồi `ride:lock:<trip_id>` bắt buộc dùng Lua Script kiểm tra giá trị khớp `driver_id` (compare-and-delete), chỉ xóa lock do chính mình sở hữu.
 - **(j) Fallback hệ số Surge Pricing:** Khi `pricing-service` không lấy được dữ liệu Supply hoặc Demand (do lỗi kết nối `location-service` hoặc `user-service`), hệ thống tự động gán `surge_multiplier = 1.0` thay vì trả lỗi cho khách hàng.
+- **(k) HTTP client nội bộ:** Mọi service gọi REST nội bộ dùng 1 `http.Client` singleton dùng chung, `Transport` đặt `MaxIdleConns 100` và `MaxIdleConnsPerHost 50` (lớn hơn mặc định của Go), luôn đọc hết Body (`io.Copy(io.Discard, res.Body)`) rồi mới `res.Body.Close()`.
+- **(l) Tạo schema:** Dùng `AutoMigrate` cho bảng/cột, sau đó chạy raw SQL (`CREATE ... IF NOT EXISTS`) cho: partial unique index `idx_trips_active_customer`, `idx_transactions_trip_type`; index thường `idx_trips_matching_timeout` (KHÔNG phải UNIQUE), `idx_trips_driver_active`; CHECK `balance >= 0` (`wallets`); CHECK `driver_status` và `role` (`users`).
+- **(m) Quy tắc consumer Redis Streams:** Áp dụng cho `payment-service`, `pricing-service`, `ai-service`: mỗi chu kỳ (2–5 giây) đọc PEL ĐÚNG 1 lượt `XREADGROUP ... 0 COUNT <PEL_BATCH_COUNT>`, KHÔNG lặp "cho tới khi hết". Đếm số lần giao bằng `XPENDING` (delivery count); nếu khi code kiểm chứng thấy đọc lại PEL không tăng count thì dùng bộ đếm RAM `map[msg_id]int`, dọn khi `XACK`. Vượt `MAX_DELIVERY_ATTEMPTS` thì log `ERROR` rồi `XACK`. Lỗi unique violation (`23505`) coi là duplicate $\rightarrow$ `XACK`.
+- **(n) Khởi động:** Mỗi service retry kết nối Postgres/Redis tối đa ~10 lần, cách nhau ~3 giây rồi mới thoát.
 
 ---
 
@@ -133,5 +139,7 @@ Mọi sự kiện trong `stream:trip_events` đều có trường `type` tương
 | `ADMIN_PASSWORD` | `Admin@123456` | `user-service` | Mật khẩu tài khoản quản trị viên khởi tạo ban đầu. |
 | `REDIS_ADDR` | `redis:6379` | Toàn bộ 8 services | Địa chỉ kết nối Redis container trong mạng Docker. |
 | `REDIS_PASSWORD` | `redis_secret_pass` | Toàn bộ 8 services | Mật khẩu xác thực kết nối Redis. |
+| `MAX_DELIVERY_ATTEMPTS` | `5` | `payment-service`, `pricing-service`, `ai-service` | Số lần thử xử lý tối đa cho message trong PEL trước khi log ERROR và XACK bỏ qua. |
+| `PEL_BATCH_COUNT` | `10` | `payment-service`, `pricing-service`, `ai-service` | Số lượng message tối đa đọc từ PEL trong mỗi chu kỳ kiểm tra (COUNT). |
 
-*Ghi chú: JWT_SECRET, REDIS_PASSWORD, ADMIN_EMAIL, ADMIN_PASSWORD mặc định chỉ là giá trị demo, phải ghi đè trong .env, không commit. Nhà cung cấp LLM là Google Gemini; tên model có thể đổi qua ENV mà không sửa code.*
+*Ghi chú: JWT_SECRET, REDIS_PASSWORD, ADMIN_EMAIL, ADMIN_PASSWORD mặc định chỉ là giá trị demo, phải ghi đè trong .env, không commit; trong docker-compose dùng dạng ${JWT_SECRET:?} (và REDIS_PASSWORD, ADMIN_PASSWORD) để fail-fast khi quên đặt, không dùng giá trị mặc định demo trên VPS. Nhà cung cấp LLM là Google Gemini; tên model có thể đổi qua ENV mà không sửa code.*

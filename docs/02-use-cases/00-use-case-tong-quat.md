@@ -193,13 +193,13 @@ flowchart LR
 | **FR-28** | Sinh nhận xét vận hành (AI/Rule) | Bắt buộc | **UC-28** | Chỉ ADMIN, endpoint GET /api/v1/admin/reports |
 | **FR-29** | Dự đoán nhu cầu di chuyển sâu | *Bỏ qua* | *(Không có)* | *Không dùng mạng nơ-ron* |
 | **FR-30** | Tài khoản Admin | Nên có | **UC-07** | Tạo từ ENV khi khởi động |
-| **FR-31** | Quản lý bảng giá (Admin) | Nên có | **UC-16** | BaseFare, PricePerKm, Surge |
-| **FR-32** | Xem dữ liệu vận hành (Admin) | Nên có | **UC-29** | Read-only từ các service qua GET /api/v1/admin/* |
+| **FR-31** | Quản lý bảng giá (Admin) | Nên có | **UC-16** | BaseFare, PricePerKm, Surge; ưu tiên code Tầng 1 |
+| **FR-32** | Xem dữ liệu vận hành (Admin) | Nên có | **UC-29** | Read-only từ các service qua GET /api/v1/admin/*; riêng GET /api/v1/admin/trips ưu tiên code Tầng 1 |
 | **FR-33** | Làm mới phiên (Token Refresh) | Bắt buộc | **UC-08** | Token Rotation nguyên tử qua Redis |
 | **FR-34** | Đăng xuất & Thu hồi token | Nên có | **UC-09** | Blacklist Redis, ngắt WS qua Redis Pub/Sub |
 | **FR-35** | Đẩy thông báo trạng thái chuyến | Nên có | **UC-13** | Pub/Sub -> WS Gateway |
 | **FR-36** | Xem chuyến hiện tại & Chi tiết | Nên có | **UC-23** | Active trip, chi tiết có timeline; ưu tiên code Tầng 1 |
-| **FR-37** | Admin hủy cưỡng bức chuyến kẹt | Nên có | **UC-30** | Quyền ghi duy nhất của Admin, WHERE status chưa kết thúc |
+| **FR-37** | Admin hủy cưỡng bức chuyến kẹt | Nên có | **UC-30** | Quyền ghi duy nhất của Admin, WHERE status chưa kết thúc; ưu tiên code Tầng 1 |
 | **FR-38** | Khách nhận tọa độ tài xế thời gian thực | Bắt buộc | **UC-31** | Chuyển tiếp tọa độ tài xế sang WS khách khi ACCEPTED đến kết thúc (Tầng 1) |
 
 ---

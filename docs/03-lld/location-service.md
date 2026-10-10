@@ -74,13 +74,13 @@
    - Lập mảng key `driver:last_seen:<id>` của các ứng viên và thực thi lệnh `MGET`. Nếu Redis lỗi $\rightarrow$ Trả `SERVICE_UNAVAILABLE` (503).
    - Với các member có `last_seen = nil` (key hết hạn), gom ID và thực thi `ZREM drivers:geo <id1> <id2>...` ngay sau `MGET` (cơ chế ZREM lười dọn sạch tài xế mất sóng).
 5. Lọc ứng viên: Chỉ giữ lại tài xế có key tồn tại và $(now - \text{last\_seen}) \le 15\text{s}$. Làm tròn khoảng cách `distance_m` thành số nguyên.
-6. Sắp xếp tăng dần theo khoảng cách `distance_m`, cắt lấy tối đa 20 ứng viên đầu tiên. Trả về 200 OK. *(Không lọc trạng thái ONLINE).*
+6. Sắp xếp tăng dần theo khoảng cách `distance_m`, cắt lấy tối đa 50 ứng viên đầu tiên. Trả về 200 OK. *(Lưu ý: Không lọc trạng thái ONLINE; tài xế đang BUSY vẫn gửi GPS định kỳ nên vẫn nằm trong danh sách candidates trả về; dispatch-service sẽ chịu trách nhiệm lọc trạng thái ONLINE qua filter-online với tối đa 500 ID).*
 
 ### 4.3. Quét tài xế trong một ô Geohash 5 (`POST /internal/v1/locations/geohash-drivers`)
 1. Validate `geohash5` có đúng 5 ký tự (sai $\rightarrow$ `VALIDATION_ERROR` 400).
 2. Giải mã `geohash5` xác định tâm ô `(center_lat, center_lng)`.
 3. Truy vấn không gian bao phủ ô:
-   `GEOSEARCH drivers:geo FROMLONLAT <center_lng> <center_lat> BYBOX 5.5 km 5.5 km WITHCOORD COUNT <GEO_SCAN_COUNT>`.
+   `GEOSEARCH drivers:geo FROMLONLAT <center_lng> <center_lat> BYBOX 5.5 5.5 km WITHCOORD COUNT <GEO_SCAN_COUNT>`.
    *(Số lượng quét thô cấu hình qua ENV `GEO_SCAN_COUNT`, mặc định 500).* Nếu Redis lỗi $\rightarrow$ Trả `SERVICE_UNAVAILABLE` (503).
 4. Nếu kết quả rỗng $\rightarrow$ Trả về 200 OK với `driver_ids: []`.
 5. Lọc chính xác ô, kiểm tra độ tươi và ZREM lười:

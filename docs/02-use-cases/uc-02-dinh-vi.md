@@ -126,7 +126,7 @@ sequenceDiagram
   1. `dispatch-service` gọi API nội bộ của `location-service`: truyền vào tọa độ đón khách, bán kính quét $R = 5\text{ km}$.
   2. `location-service` thực thi lệnh truy vấn không gian trên Redis:
      - `GEOSEARCH drivers:geo FROMLONLAT <pickup_lng> <pickup_lat> BYRADIUS 5 km WITHDIST ASC`.
-  3. `location-service` chỉ kiểm tra mốc thời gian `driver:last_seen:<driver_id>`: lọc lấy các ứng viên có cập nhật GPS trong vòng 15 giây gần nhất, sắp xếp theo khoảng cách tăng dần, và trả về khoảng 20 ứng viên gần nhất kèm khoảng cách (`distance_in_meters`).
+  3. `location-service` chỉ kiểm tra mốc thời gian `driver:last_seen:<driver_id>`: lọc lấy các ứng viên có cập nhật GPS trong vòng 15 giây gần nhất, sắp xếp theo khoảng cách tăng dần, và trả về tối đa 50 ứng viên gần nhất kèm khoảng cách (`distance_in_meters`).
   4. **Quy tắc phân tách trách nhiệm (Database-per-Service):** `location-service` không lọc theo `ONLINE` vì trạng thái tài xế thuộc `user-service`; `dispatch-service` lọc `ONLINE` và cắt Top 3–5 ở UC-18.
 * **Luồng ngoại lệ:**
   - *Không có ứng viên nào có GPS trong 15 giây trong bán kính 5km:* Trả về danh sách rỗng `[]` (dẫn tới kích hoạt chuyến xe chuyển sang `EXPIRED` ngay lập tức ở UC-18/UC-22).

@@ -44,8 +44,8 @@ sequenceDiagram
             DispatchSvc->>DB: Giao dịch DB: INSERT chuyến (status: CREATED -> MATCHING, fare cố định, timeout 30s)
             DispatchSvc->>Redis: XADD stream:trip_events {type: TripCreated, trip_id, ...}
             
-            DispatchSvc->>LocationSvc: Quét ~20 ứng viên có GPS < 15s (nội bộ, không qua api-gateway)
-            LocationSvc-->>DispatchSvc: Trả về ~20 drivers kèm distance_m
+            DispatchSvc->>LocationSvc: Quét tối đa 50 ứng viên có GPS < 15s (nội bộ, không qua api-gateway)
+            LocationSvc-->>DispatchSvc: Trả về tối đa 50 drivers kèm distance_m
             DispatchSvc->>UserSvc: Lọc tài xế ONLINE hàng loạt (nội bộ, không qua api-gateway)
             UserSvc-->>DispatchSvc: Trả về danh sách tài xế ONLINE
             
@@ -131,7 +131,7 @@ sequenceDiagram
   - *OSRM Public API bị timeout (> 400ms) hoặc mất mạng ngoài:* `pricing-service` ngay lập tức chuyển hướng sang công thức tính toán toán học nội bộ:
     $$\text{Distance} = \text{Haversine}(\text{Pickup}, \text{Dropoff}) \times 1.35$$
     Thời gian dự kiến $\text{ETA} = \frac{\text{Distance}}{30\text{ km/h}} \times 60 \text{ (phút)}$. Tổng cước cũng được làm tròn tới hàng nghìn gần nhất. Nguồn tính khoảng cách được đánh dấu là `HAVERSINE`. Request hoàn thành trong $< 1\text{ ms}$, không trả lỗi cho người dùng.
-  - *Tọa độ không hợp lệ (ngoài phạm vi vĩ độ [-90, 90], kinh độ [-180, 180], hoặc điểm đón trùng điểm trả):* Trả về mã lỗi `VALIDATION_ERROR` (HTTP 400).
+  - *Tọa độ không hợp lệ (ngoài phạm vi vĩ độ [-85.05112878, 85.05112878] theo tham chiếu LLD-00, kinh độ [-180, 180], hoặc điểm đón trùng điểm trả):* Trả về mã lỗi `VALIDATION_ERROR` (HTTP 400).
   - *Chưa đăng nhập / thiếu JWT:* `api-gateway` từ chối với mã lỗi `UNAUTHORIZED` (HTTP 401).
 * **Hậu điều kiện:** Giá cước được tính toán chính xác để hiển thị cho người dùng tham khảo hoặc làm căn cứ tạo chuyến.
 * **Dữ liệu demo cần thấy trên Postman:**
@@ -213,7 +213,7 @@ sequenceDiagram
 * **Actor:** Hệ thống (`dispatch-service` $\rightarrow$ `location-service` $\rightarrow$ `user-service` $\rightarrow$ `ws-gateway`).
 * **Tiền điều kiện:** Chuyến xe vừa được tạo thành công ở trạng thái `MATCHING`.
 * **Luồng chính:**
-  1. `dispatch-service` gọi `location-service` quét khoảng 20 ứng viên tài xế có cập nhật GPS trong vòng 15 giây gần nhất quanh điểm đón trong bán kính $R$ (nội bộ, không qua api-gateway, UC-12). `location-service` trả về danh sách ứng viên kèm khoảng cách `distance_m`.
+  1. `dispatch-service` gọi `location-service` quét tối đa 50 ứng viên tài xế có cập nhật GPS trong vòng 15 giây gần nhất quanh điểm đón trong bán kính $R$ (nội bộ, không qua api-gateway, UC-12). `location-service` trả về danh sách ứng viên kèm khoảng cách `distance_m`.
   2. `dispatch-service` gọi `user-service` MỘT lần duy nhất để lọc `ONLINE` hàng loạt (nội bộ, không qua api-gateway) kiểm tra và lọc ra các tài xế đang thực sự ở trạng thái `ONLINE`.
   3. Từ danh sách tài xế `ONLINE`, `dispatch-service` cắt lấy **Top 3–5 tài xế gần nhất**, sau đó **lưu danh sách tài xế được mời này vào bản ghi chuyến xe trong `dispatchdb`** (làm căn cứ xác thực khi tài xế bấm nhận cuốc ở UC-19).
   4. **Trường hợp 1 (Có tài xế phù hợp - Top 1..5):**

@@ -22,7 +22,7 @@ Hai gateway publish dạng 127.0.0.1:PORT (không dùng 0.0.0.0, vì Docker có 
 
 ## Tech stack
 - Go + Fiber + GORM
-- Redis: Pub/Sub (đẩy tin realtime giữa các instance ws-gateway) + Streams (sự kiện giữa service). Thay Kafka.
+- Redis: Pub/Sub (đẩy tin realtime tới ws-gateway, 1 instance) + Streams (sự kiện giữa service). Thay Kafka.
 - PostgreSQL: DATABASE-PER-SERVICE. Dùng 1 container Postgres (tiết kiệm RAM), bên trong mỗi service
   có 1 database + 1 user/mật khẩu riêng. Service KHÔNG được truy cập database của service khác;
   cần dữ liệu thì gọi API hoặc nhận sự kiện Redis. KHÔNG dùng chung schema/bảng giữa các service.
@@ -79,6 +79,7 @@ Hai gateway publish dạng 127.0.0.1:PORT (không dùng 0.0.0.0, vì Docker có 
 ## Quy ước tài liệu
 - Viết tiếng Việt, ngắn gọn, dễ hiểu. Sơ đồ dùng Mermaid.
 - File đặt trong docs/ đúng thư mục: 01-srs, 02-use-cases, 03-lld, 04-api-test, 05-deploy.
+- Quy tắc ưu tiên khi các tài liệu lệch nhau: LLD-00 > LLD service > Use Case > SRS (SRS là yêu cầu, LLD là chuẩn cài đặt).
 - SRS: mỗi chức năng có mã (FR-01, FR-02...) và mức ưu tiên (bắt buộc / nên có / bỏ qua).
 - LLD mỗi service: 1 file docs/03-lld/<tên-service>.md, gồm bảng DB của CHÍNH service đó,
   API, luồng xử lý, ngoại lệ, sự kiện Redis phát/nhận.
@@ -106,11 +107,12 @@ Hai gateway publish dạng 127.0.0.1:PORT (không dùng 0.0.0.0, vì Docker có 
 > **Lưu ý:** Đây là thứ tự ưu tiên khi bắt tay vào code; tài liệu kỹ thuật (SRS, Use Case, LLD) vẫn được viết đầy đủ toàn bộ hệ thống từ đầu.
 
 - **Tầng 1 (Đủ điều kiện demo cốt lõi):**
-  - Toàn bộ FR mức "Bắt buộc" trừ `ai-service`, cộng thêm `FR-38` (stream vị trí tài xế cho khách) và `FR-36` (xem chuyến hiện tại và chi tiết chuyến).
+  - Toàn bộ FR mức "Bắt buộc" trừ `ai-service`, cộng thêm `FR-38` (stream vị trí tài xế cho khách), `FR-36` (xem chuyến hiện tại và chi tiết chuyến), `FR-30` (khởi tạo Admin từ ENV), `FR-31` (GET/PUT `/api/v1/admin/pricing/config`), `FR-37` (Admin hủy cưỡng bức), và riêng `GET /api/v1/admin/trips` (một phần của `FR-32`).
+  - *Lý do đưa lên Tầng 1:* `FR-37` là công cụ duy nhất gỡ chuyến kẹt; `GET /admin/trips` để tìm `trip_id` khi cần gỡ; `FR-31` cần để hạ $T$ khi demo surge; `FR-30` cần để có tài khoản Admin gọi các API trên.
   - Đường luồng demo chính: Đăng ký → Đăng nhập → Nạp tiền ví ảo → Tài xế bật ONLINE gửi GPS → Khách tra ước tính cước → Đặt xe → Tài xế nhận chuyến → Hoàn thành cuốc → Kiểm tra số dư ví.
-  - Khi chưa triển khai `FR-31` (API quản lý bảng giá của Admin), các tham số đơn giá (`BaseFare`, `PricePerKm`) và ngưỡng surge $T$ được đọc mặc định từ biến môi trường (ENV); `FR-31` chỉ bổ sung tính năng cập nhật động lúc runtime.
+  - ENV chỉ là giá trị seed lần đầu khi bảng `pricing_configs` rỗng; sau đó đọc từ DB (cache Redis 1 giờ), muốn đổi thì dùng PUT config (`FR-31`).
 - **Tầng 2 (Sau khi Deploy VPS và CI/CD hoạt động ổn định):**
   - Triển khai `ai-service`: `FR-27` (thu thập số liệu vận hành từ Redis Streams) và `FR-28` (báo cáo và nhận xét AI / Heuristic Rule).
 - **Tầng 3 (Nếu còn thời gian tối ưu):**
-  - Các tính năng mở rộng: `FR-05` (hồ sơ cá nhân), `FR-06` (phương tiện tài xế), `FR-31` (API bảng giá Admin), `FR-32` (xem dữ liệu vận hành Admin), `FR-37` (Admin hủy cưỡng bức).
-  - Các tính năng làm kèm cùng lúc vì chi phí triển khai thấp: `FR-30` (khởi tạo Admin từ ENV), `FR-34` (đăng xuất & blacklist Redis), `FR-35` (thông báo đổi trạng thái chuyến qua WS).
+  - Các tính năng mở rộng: `FR-05` (hồ sơ cá nhân), `FR-06` (phương tiện tài xế), phần còn lại của `FR-32` (xem người dùng, xem tài xế active).
+  - Các tính năng làm kèm cùng lúc vì chi phí triển khai thấp: `FR-34` (đăng xuất & blacklist Redis), `FR-35` (thông báo đổi trạng thái chuyến qua WS).

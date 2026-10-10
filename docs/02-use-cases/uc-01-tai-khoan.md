@@ -30,7 +30,7 @@ sequenceDiagram
     else Mật khẩu hợp lệ
         UserSvc->>UserSvc: Tạo access_token (JWT có jti, exp: 1h)
         UserSvc->>UserSvc: Sinh refresh_token ngẫu nhiên (UUID/Opaque)
-        UserSvc->>Redis: SET refresh:<token> {user_id, role} EX 7d (TTL 7 ngày)
+        UserSvc->>Redis: SET refresh:<token> user_id EX 7d (TTL 7 ngày)
         UserSvc-->>Gateway: Trả về {access_token, refresh_token, user_info}
         Gateway-->>Client: 200 OK (Kèm cặp Token trong body JSON)
     end
@@ -44,20 +44,22 @@ sequenceDiagram
     participant Gateway as api-gateway
     participant UserSvc as user-service
     participant Redis as Redis Cache & Session
+    participant DB as userdb (PostgreSQL)
 
     Client->>Gateway: POST /api/v1/auth/refresh {refresh_token}
     Gateway->>UserSvc: Forward request
-    UserSvc->>Redis: GET refresh:<old_token>
+    UserSvc->>Redis: GETDEL refresh:<old_token> (Thu hồi nguyên tử)
     alt Token không tồn tại / Đã bị thu hồi / Hết hạn
         Redis-->>UserSvc: nil
         UserSvc-->>Gateway: Lỗi 401 INVALID_REFRESH_TOKEN
         Gateway-->>Client: 401 Unauthorized
-    else Token hợp lệ
-        Redis-->>UserSvc: {user_id, role}
-        UserSvc->>Redis: DEL refresh:<old_token> (Xóa token cũ ngay lập tức)
+    else Token hợp lệ (trả về user_id)
+        Redis-->>UserSvc: user_id
+        UserSvc->>DB: Truy vấn DB theo user_id để lấy role hiện tại
+        DB-->>UserSvc: Trả về role hiện tại
         UserSvc->>UserSvc: Tạo new_access_token (jti mới, exp: 1h)
         UserSvc->>UserSvc: Sinh new_refresh_token ngẫu nhiên
-        UserSvc->>Redis: SET refresh:<new_token> {user_id, role} EX 7d
+        UserSvc->>Redis: SET refresh:<new_token> user_id EX 7d
         UserSvc-->>Gateway: Trả về {access_token: new, refresh_token: new}
         Gateway-->>Client: 200 OK (Cấp cặp Token mới)
     end
@@ -231,10 +233,11 @@ sequenceDiagram
 * **Tiền điều kiện:** Client sở hữu `refresh_token` nhận được từ lần đăng nhập hoặc lần refresh trước đó.
 * **Luồng chính:**
   1. Client gửi `refresh_token` trong body JSON lên Gateway (`POST /api/v1/auth/refresh`).
-  2. `user-service` thực hiện kiểm tra và thu hồi `refresh_token` một cách nguyên tử trong Redis (thao tác single-use / chỉ dùng đúng 1 lần): tra cứu và xóa khóa `refresh:<token>`.
-  3. Nếu tìm thấy và còn hạn:
+  2. `user-service` thực hiện kiểm tra và thu hồi `refresh_token` một cách nguyên tử trong Redis bằng lệnh `GETDEL refresh:<token>` (lưu chuỗi thuần `user_id`, thao tác single-use).
+  3. Nếu tìm thấy và còn hạn (nhận được `user_id`):
+     - Truy vấn DB theo `user_id` để lấy vai trò (`role`) hiện tại.
      - Sinh `new_access_token` mới (mang `jti` mới, hạn 1 giờ).
-     - Sinh `new_refresh_token` mới và lưu vào Redis: `SET refresh:<new_token> ... EX 7d`.
+     - Sinh `new_refresh_token` mới và lưu vào Redis: `SET refresh:<new_token> <user_id> EX 7d`.
      - Trả về cặp Token mới cho Client.
 * **Luồng ngoại lệ:**
   - *Refresh token không hợp lệ, không tìm thấy hoặc đã qua sử dụng:* Trả về mã lỗi `INVALID_REFRESH_TOKEN` (HTTP 401). Client bắt buộc phải đăng nhập lại.
