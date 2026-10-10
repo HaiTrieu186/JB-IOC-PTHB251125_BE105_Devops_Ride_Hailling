@@ -116,3 +116,13 @@ Hai gateway publish dạng 127.0.0.1:PORT (không dùng 0.0.0.0, vì Docker có 
 - **Tầng 3 (Nếu còn thời gian tối ưu):**
   - Các tính năng mở rộng: `FR-05` (hồ sơ cá nhân), `FR-06` (phương tiện tài xế), phần còn lại của `FR-32` (xem người dùng, xem tài xế active).
   - Các tính năng làm kèm cùng lúc vì chi phí triển khai thấp: `FR-34` (đăng xuất & blacklist Redis), `FR-35` (thông báo đổi trạng thái chuyến qua WS).
+
+## Thư viện & công nghệ được phép (chốt 10/10/2026)
+- Go: tối thiểu 1.22; go.mod dùng phiên bản mà thư viện yêu cầu; image build golang:<phiên bản đó>-alpine, CGO_ENABLED=0; image cuối alpine:3 + ca-certificates + tzdata (không scratch vì OSRM/Gemini gọi HTTPS và ai-service cần múi giờ Asia/Ho_Chi_Minh); healthcheck dùng wget.
+- Thư viện Go: github.com/gofiber/fiber/v2 (giữ v2); gorm.io/gorm + gorm.io/driver/postgres; github.com/redis/go-redis/v9; github.com/golang-jwt/jwt/v5 (bắt buộc jwt.WithValidMethods HS256); golang.org/x/crypto/bcrypt; github.com/google/uuid; github.com/gofiber/contrib/websocket (chỉ ws-gateway); github.com/mmcloughlin/geohash (chỉ location, pricing, dispatch).
+- Dùng stdlib, KHÔNG thêm thư viện: log/slog (JSON handler), os.Getenv cho cấu hình, tự viết validate, net/http cho REST nội bộ, OSRM, Gemini. Không viper/zap/zerolog/validator. Không viết unit test (CI chỉ go vet + go build).
+- CI/CD: actions/checkout, actions/setup-go, docker/login-action, build bằng docker build + docker push thường (không buildx, không cache); deploy bằng appleboy/scp-action và appleboy/ssh-action. Tên owner GHCR luôn chữ thường.
+- Script demo: Python 3 + aiohttp. Test WS: image websocat chạy tạm. Test REST nội bộ: curlimages/curl trên mạng backend-net.
+- Compose: container_name = tên service; restart: unless-stopped; logging json-file max-size 5m, max-file 2; mỗi service có cả build và image ghcr.io/${GHCR_OWNER}/<tên>:latest; mạng default đặt tên backend-net.
+- Chưa làm (để sau cùng nếu còn thời gian, profile riêng): Dozzle, Prometheus + node_exporter + cAdvisor.
+- Muốn dùng thư viện/công nghệ ngoài danh sách này: HỎI người dùng trước.
