@@ -55,6 +55,39 @@ services:
       timeout: 5s
       retries: 5
 
+  user-service:
+    build: ./services/user-service
+    image: ghcr.io/${GHCR_OWNER:?}/user-service:latest
+    container_name: user-service
+    restart: unless-stopped
+    mem_limit: 30m
+    environment:
+      PORT: "8001"
+      DATABASE_URL: "postgres://user_user:user_pass@postgres:5432/userdb?sslmode=disable"
+      REDIS_ADDR: "redis:6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?}
+      JWT_SECRET: ${JWT_SECRET:?}
+      ACCESS_TOKEN_EXPIRY: "3600"
+      REFRESH_TOKEN_EXPIRY: "604800"
+      ADMIN_EMAIL: "admin@ridehailing.local"
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?}
+      GOMEMLIMIT: "26MiB"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8001/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
 volumes:
   postgres_data:
   redis_data:

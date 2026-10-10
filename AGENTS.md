@@ -126,3 +126,40 @@ Hai gateway publish dạng 127.0.0.1:PORT (không dùng 0.0.0.0, vì Docker có 
 - Compose: container_name = tên service; restart: unless-stopped; logging json-file max-size 5m, max-file 2; mỗi service có cả build và image ghcr.io/${GHCR_OWNER}/<tên>:latest; mạng default đặt tên backend-net.
 - Chưa làm (để sau cùng nếu còn thời gian, profile riêng): Dozzle, Prometheus + node_exporter + cAdvisor.
 - Muốn dùng thư viện/công nghệ ngoài danh sách này: HỎI người dùng trước.
+
+## Cấu trúc code mỗi service (Go) (chốt 10/10/2026)
+Mỗi service Go tổ chức theo lớp, thư mục gốc service chỉ có main.go, go.mod, Dockerfile:
+
+~~~
+services/<tên>/
+  main.go                  # chỉ khởi tạo + nối dây bằng constructor injection thủ công, không chứa logic
+  go.mod
+  Dockerfile
+  internal/
+    config/                # đọc ENV
+    entity/                # struct GORM ánh xạ bảng
+    dto/                   # struct request/response (json tag, rule validate)
+    exception/             # AppError (code, http status, message), hằng mã lỗi, Fiber ErrorHandler duy nhất
+    mapper/                # entity <-> dto (chỉ tạo khi cần)
+    repository/            # INTERFACE truy cập dữ liệu (Postgres, Redis)
+      impl/                # cài đặt bằng GORM / go-redis, kết nối + migration
+    service/               # INTERFACE nghiệp vụ
+      impl/                # cài đặt nghiệp vụ
+    controller/            # Fiber handler: parse + validate + gọi service + trả envelope
+    router/                # đăng ký route (đúng thứ tự LLD) + gắn middleware
+    middleware/            # đọc X-User-Id / X-User-Role, kiểm role
+    client/                # gọi REST nội bộ sang service khác (http.Client singleton)
+    consumer/              # đọc Redis Streams / Pub/Sub (khi service cần)
+    scheduler/             # tiến trình nền, vd sweeper (khi service cần)
+    util/                  # hàm thuần: jwt, bcrypt, response envelope, haversine, geohash, tính hoa hồng...
+~~~
+
+Quy tắc:
+1. Phụ thuộc một chiều: controller -> service (interface) -> repository (interface). Chỉ main.go import các gói impl. Chỉ repository/impl, consumer, client, main.go được import gorm / go-redis; controller và service/impl thì KHÔNG.
+2. Interface đặt trong package service / repository, cài đặt trong package impl con; constructor NewXxx trả về interface; struct cài đặt không export (vd userServiceImpl).
+3. Luồng mà LLD đòi 1 DB transaction: repository có interface Transactor (WithTx chạy 1 hàm trong 1 transaction); service không import gorm. UPDATE có điều kiện (WHERE status = ...) là method repository trả số dòng bị ảnh hưởng hoặc bool.
+4. Lỗi: service trả *exception.AppError; controller không tự viết JSON lỗi; 1 ErrorHandler duy nhất đổi sang envelope {success,data,error}.
+5. Tên file snake_case, mỗi file một mối quan tâm (vd auth_controller.go, user_repository.go, auth_service.go cho interface và impl/auth_service_impl.go cho cài đặt). Không file nào quá dài, tách khi hơn khoảng 250 dòng.
+6. Không tạo thư mục/file rỗng cho đủ bộ; service không cần lớp nào (vd location-service không có entity, gateway không có service/repository) thì bỏ lớp đó.
+7. Goroutine nền (worker, consumer, sweeper) chỉ đặt trong consumer/ hoặc scheduler/.
+8. Tái cấu trúc không được đổi API, hành vi, ENV, bảng, mã lỗi.
