@@ -102,3 +102,31 @@ Bảng chuẩn bị trạng thái hệ thống trước khi thực hiện các k
 | **P-01..P-06** | `pricing-service` *(Lượt 4)* | C1 tra cứu báo giá. | D1 có vị trí trong ô `w3gv7` để tính Supply. | Cache pricing hết hạn sau 1h hoặc reset. |
 | **W-01..W-06** | `payment-service` *(Lượt 6)* | C1, C2 đã nạp ví; C3 số dư = 0. | Ví khởi tạo thành công trong `paymentdb`. | Kiểm tra log số dư trước/sau cuốc. |
 | **DP-01..DP-10**| `dispatch-service` *(Lượt 7)* | C1 đặt xe, D1 nhận cuốc. | D1 trạng thái `ONLINE`, GPS $\le 15\text{s}$. | Hủy chuyến hoặc hoàn tất để nhả lock và đưa D1 về `ONLINE`. |
+
+---
+
+## 8. BẢNG DỮ LIỆU SEED SURGE PRICING (LƯỢT 4)
+
+Phục vụ kiểm thử công thức tính hệ số giá biến động Surge Pricing:
+$$\text{ratio} = \frac{\text{Demand} / \text{Supply}}{T}, \quad \text{surge} = \text{clamp}(\text{ratio}, 1.0, 1.5)$$
+
+### 8.1. Thông số thiết lập Nguồn cung (Supply) & Nhu cầu (Demand)
+- **Ô Geohash kiểm thử:** `w3gv7` (chứa điểm đón P1 tại Chợ Bến Thành).
+- **Thiết lập Supply = 2:**
+  - Tài xế D1 (`b6b9c2e8-ba47-4c06-a273-96ee9deec91e`) trạng thái `ONLINE`, record GPS tại `(10.7725, 106.6980)`.
+  - Tài xế D2 (`f00a41df-95f0-4dfb-8a86-ebec3848149a`) trạng thái `ONLINE`, record GPS tại `(10.7725, 106.6980)`.
+  - Gọi API báo giá trong vòng 15 giây kể từ khi record GPS để đảm bảo TTL còn hiệu lực.
+- **Thiết lập Demand = 3:**
+  - Bắn 3 message `TripCreated` vào `stream:trip_events` có `pickup_geohash5: "w3gv7"`, `created_at` định dạng RFC3339 UTC trong vòng 300 giây gần nhất.
+
+### 8.2. Ma trận kết quả kỳ vọng theo ngưỡng T
+| Ca kiểm thử | Supply | Demand | Ngưỡng T | Công thức tính tỷ lệ | Surge Multiplier kỳ vọng | Ghi chú kiểm thử |
+|:---:|:---:|:---:|:---:|:---:|:---:|---|
+| **S-01** | 2 | 3 | `1.2` | $(3 / 2) / 1.2 = 1.25$ | **1.25** | Nằm trong khoảng $[1.0, 1.5]$, chứng minh công thức chính xác. |
+| **S-02** | 2 | 3 | `1.4` | $(3 / 2) / 1.4 = 1.0714...$ | **1.07** | Chứng minh cơ chế làm tròn 2 chữ số thập phân. |
+| **S-03** | 2 | 3 | `5.0` | $(3 / 2) / 5.0 = 0.30$ | **1.0** | Bị giới hạn dưới (clamp min 1.0). |
+| **S-04** | 2 | 3 | `0.05`| $(3 / 2) / 0.05 = 30.0$| **1.5** | Bị giới hạn trên (clamp max 1.5). |
+| **S-05** | 0 | 3 | `1.0` | Không có tài xế trong 15s | **1.5** | Quy tắc Supply=0 và Demand>0 $\rightarrow$ surge = 1.5. |
+| **S-06** | 0/bất kỳ | 0 | `1.0` | Điểm đón ô khác (Tân Sơn Nhất `w3gve`) | **1.0** | Quy tắc Demand=0 $\rightarrow$ surge = 1.0. |
+| **S-07** | Lỗi | Lỗi | `1.0` | location-service ngừng hoạt động | **1.0** | Fallback an toàn LLD-00 5(j) khi service phụ thuộc lỗi. |
+

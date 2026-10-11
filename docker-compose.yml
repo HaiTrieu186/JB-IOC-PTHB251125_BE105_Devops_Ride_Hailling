@@ -117,6 +117,44 @@ services:
       timeout: 5s
       retries: 5
 
+  pricing-service:
+    build: ./services/pricing-service
+    image: ghcr.io/${GHCR_OWNER:?}/pricing-service:latest
+    container_name: pricing-service
+    restart: unless-stopped
+    mem_limit: 30m
+    environment:
+      PORT: "8004"
+      DATABASE_URL: "postgres://pricing_user:pricing_pass@postgres:5432/pricingdb?sslmode=disable"
+      REDIS_ADDR: "redis:6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?}
+      DEFAULT_BASE_FARE: ${DEFAULT_BASE_FARE:-10000}
+      DEFAULT_PRICE_PER_KM: ${DEFAULT_PRICE_PER_KM:-12000}
+      SURGE_THRESHOLD: ${SURGE_THRESHOLD:-1.0}
+      OSRM_BASE_URL: ${OSRM_BASE_URL:-https://router.project-osrm.org}
+      OSRM_TIMEOUT_MS: ${OSRM_TIMEOUT_MS:-400}
+      LOCATION_SERVICE_URL: "http://location-service:8002"
+      USER_SERVICE_URL: "http://user-service:8001"
+      INTERNAL_HTTP_TIMEOUT_MS: "500"
+      MAX_DELIVERY_ATTEMPTS: ${MAX_DELIVERY_ATTEMPTS:-5}
+      PEL_BATCH_COUNT: ${PEL_BATCH_COUNT:-10}
+      GOMEMLIMIT: "26MiB"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8004/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
 volumes:
   postgres_data:
   redis_data:
@@ -124,3 +162,4 @@ volumes:
 networks:
   default:
     name: backend-net
+
