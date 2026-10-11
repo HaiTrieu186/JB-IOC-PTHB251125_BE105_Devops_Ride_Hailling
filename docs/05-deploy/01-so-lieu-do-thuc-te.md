@@ -82,6 +82,7 @@
 ### Đánh giá & Khuyến nghị giới hạn tài nguyên
 
 - **Đánh giá `mem_limit` hiện tại (30 MB):** `pricing-service` tiêu thụ ~10.11 MiB RAM (~33.7% định mức 30 MB), hoạt động ổn định bao gồm cả goroutine background tiêu thụ Redis Streams PEL. Định mức `mem_limit: 30m` và `GOMEMLIMIT: 26MiB` là hoàn toàn đủ, an toàn chống OOM và kích hoạt GC đúng lúc.
+- **user-service:** 19.23 MiB (64% của 30m), tăng dần qua các lần đo 7 -> 17 -> 19 MiB (Docker Desktop, máy dev); cần xem lại ở Lượt 10 vì bcrypt đăng nhập dồn có thể chạm trần.
 - **Đo kiểm độ trễ OSRM thực tế từ máy dev:** Gọi trực tiếp `https://router.project-osrm.org` qua cURL cho kết quả thời gian phản hồi từ ~440 ms đến ~630 ms (thường xuyên vượt ngưỡng 400 ms do độ trễ đường truyền quốc tế). Khi timeout $> 400\text{ ms}$, cơ chế Fallback Haversine $\times 1.35$ kích hoạt mượt mà, trả HTTP 200 kèm `source = "HAVERSINE"`. Khi mạng nhanh $< 400\text{ ms}$, service trả kết quả lộ trình thực tế từ OSRM với `source = "OSRM"`.
 - **Đo kiểm Redis Streams XPENDING delivery count:** Lệnh `XREADGROUP ... 0` đọc lại tin nhắn tồn đọng trong PEL không tự động tăng `DeliveredTimes` của Redis Stream (giá trị giữ nguyên 1). Đúng theo quy định Mục 5(m) LLD-00, `pricing-service` sử dụng bộ đếm trong RAM `map[msg_id]int` (kèm Mutex lock) để theo dõi số lần thử lại; khi vượt quá `MAX_DELIVERY_ATTEMPTS` (5 lần) thì ghi log `ERROR` và tự động `XACK` giải phóng message kẹt.
 - **Ngân sách RAM toàn hệ thống:** 101.03 MiB / 850 MiB (~11.9% ngân sách tối đa của VPS 1 GB).

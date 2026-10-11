@@ -10,6 +10,7 @@ import (
 	"pricing-service/internal/config"
 	"pricing-service/internal/repository"
 
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -20,13 +21,11 @@ const (
 )
 
 type TripEventsConsumer struct {
-	rdb                 *redis.Client
-	demandRepo          repository.DemandRepository
-	cfg                 *config.Config
-	pelDeliveryCounts   map[string]int
-	pelMu               sync.Mutex
-	lastXPendingReport  sync.Once
-	xpendingIncrements  bool
+	rdb               *redis.Client
+	demandRepo        repository.DemandRepository
+	cfg               *config.Config
+	pelDeliveryCounts map[string]int
+	pelMu             sync.Mutex
 }
 
 func NewTripEventsConsumer(
@@ -107,11 +106,14 @@ func (c *TripEventsConsumer) processPEL(ctx context.Context) {
 
 func (c *TripEventsConsumer) handlePELMessage(ctx context.Context, msg redis.XMessage) {
 	c.pelMu.Lock()
-	count := c.pelDeliveryCounts[msg.ID] + 1
+	// Lần giao đầu qua '>' không được đếm, nên lần đầu tiên tin xuất hiện trong PEL phải tính là lần giao thứ 2
+	count := c.pelDeliveryCounts[msg.ID]
+	if count == 0 {
+		count = 1
+	}
+	count++
+	c.pelDeliveryCounts[msg.ID] = count
 	c.pelMu.Unlock()
-
-	// Kiểm tra xem XPENDING có tăng hay không
-	c.checkXPendingDelivery(ctx, msg.ID, count)
 
 	if int64(count) > c.cfg.MaxDeliveryAttempts {
 		slog.Error("max delivery attempts exceeded in PEL, dropping and acking message",
@@ -120,35 +122,7 @@ func (c *TripEventsConsumer) handlePELMessage(ctx context.Context, msg redis.XMe
 		return
 	}
 
-	c.pelMu.Lock()
-	c.pelDeliveryCounts[msg.ID] = count
-	c.pelMu.Unlock()
-
 	c.processMessage(ctx, msg)
-}
-
-func (c *TripEventsConsumer) checkXPendingDelivery(ctx context.Context, msgID string, ramCount int) {
-	pendings, err := c.rdb.XPendingExt(ctx, &redis.XPendingExtArgs{
-		Stream: streamName,
-		Group:  consumerGroup,
-		Start:  msgID,
-		End:    msgID,
-		Count:  1,
-	}).Result()
-
-	if err == nil && len(pendings) > 0 {
-		p := pendings[0]
-		slog.Debug("XPENDING check", "msg_id", msgID, "delivery_count", p.RetryCount, "ram_count", ramCount)
-		c.lastXPendingReport.Do(func() {
-			if p.RetryCount > 1 {
-				c.xpendingIncrements = true
-				slog.Info("XPENDING delivery count increments on reread", "delivered_times", p.RetryCount)
-			} else {
-				c.xpendingIncrements = false
-				slog.Info("XPENDING delivery count does not increment on reread (using in-memory map counter)", "delivered_times", p.RetryCount)
-			}
-		})
-	}
 }
 
 // processNewMessages đọc tin nhắn mới từ stream
@@ -205,6 +179,13 @@ func (c *TripEventsConsumer) processMessage(ctx context.Context, msg redis.XMess
 	if tripID == "" || pickupGeohash5 == "" || createdAtStr == "" {
 		slog.Error("TripCreated missing required fields, acking corrupted message",
 			"msg_id", msg.ID, "trip_id", tripID, "geohash5", pickupGeohash5, "created_at", createdAtStr)
+		c.ackMessage(ctx, msg.ID)
+		return
+	}
+
+	if _, err := uuid.Parse(tripID); err != nil {
+		slog.Error("TripCreated invalid UUID format for trip_id, acking corrupted message",
+			"msg_id", msg.ID, "trip_id", tripID, "error", err)
 		c.ackMessage(ctx, msg.ID)
 		return
 	}

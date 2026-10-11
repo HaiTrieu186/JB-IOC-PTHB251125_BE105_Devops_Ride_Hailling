@@ -113,8 +113,8 @@ $$\text{ratio} = \frac{\text{Demand} / \text{Supply}}{T}, \quad \text{surge} = \
 ### 8.1. Thông số thiết lập Nguồn cung (Supply) & Nhu cầu (Demand)
 - **Ô Geohash kiểm thử:** `w3gv7` (chứa điểm đón P1 tại Chợ Bến Thành).
 - **Thiết lập Supply = 2:**
-  - Tài xế D1 (`b6b9c2e8-ba47-4c06-a273-96ee9deec91e`) trạng thái `ONLINE`, record GPS tại `(10.7725, 106.6980)`.
-  - Tài xế D2 (`f00a41df-95f0-4dfb-8a86-ebec3848149a`) trạng thái `ONLINE`, record GPS tại `(10.7725, 106.6980)`.
+  - Tài xế D1 (`<d1_id>`) và D2 (`<d2_id>`) (lấy từ biến Postman `d1_id`, `d2_id` sau khi chạy folder `00 Seed`).
+  - Cả 2 tài xế có trạng thái `ONLINE`, record GPS tại `(10.7725, 106.6980)`.
   - Gọi API báo giá trong vòng 15 giây kể từ khi record GPS để đảm bảo TTL còn hiệu lực.
 - **Thiết lập Demand = 3:**
   - Bắn 3 message `TripCreated` vào `stream:trip_events` có `pickup_geohash5: "w3gv7"`, `created_at` định dạng RFC3339 UTC trong vòng 300 giây gần nhất.
