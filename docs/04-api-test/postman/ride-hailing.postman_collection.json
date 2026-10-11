@@ -12,6 +12,11 @@
 			"type": "string"
 		},
 		{
+			"key": "location_url",
+			"value": "http://127.0.0.1:8002",
+			"type": "string"
+		},
+		{
 			"key": "default_password",
 			"value": "Test@1234",
 			"type": "string"
@@ -2197,6 +2202,679 @@
 								"v1",
 								"auth",
 								"login"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "02 location-service",
+			"item": [
+				{
+					"name": "L-01a Record D1 Location",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"var res = pm.response.json();",
+									"pm.test(\"Record D1 success\", function () {",
+									"    pm.expect(res.success).to.be.true;",
+									"    pm.expect(res.data.success).to.be.true;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"driver_id\": \"{{d1_id}}\",\n  \"latitude\": 10.7738,\n  \"longitude\": 106.6992\n}"
+						},
+						"url": {
+							"raw": "{{location_url}}/internal/v1/locations/record",
+							"host": [
+								"{{location_url}}"
+							],
+							"path": [
+								"internal",
+								"v1",
+								"locations",
+								"record"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "L-01b Record D2 Location",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"var res = pm.response.json();",
+									"pm.test(\"Record D2 success\", function () {",
+									"    pm.expect(res.success).to.be.true;",
+									"    pm.expect(res.data.success).to.be.true;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"driver_id\": \"{{d2_id}}\",\n  \"latitude\": 10.7775,\n  \"longitude\": 106.7032\n}"
+						},
+						"url": {
+							"raw": "{{location_url}}/internal/v1/locations/record",
+							"host": [
+								"{{location_url}}"
+							],
+							"path": [
+								"internal",
+								"v1",
+								"locations",
+								"record"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "L-01c Record D3 Location",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"var res = pm.response.json();",
+									"pm.test(\"Record D3 success\", function () {",
+									"    pm.expect(res.success).to.be.true;",
+									"    pm.expect(res.data.success).to.be.true;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"driver_id\": \"{{d3_id}}\",\n  \"latitude\": 10.7855,\n  \"longitude\": 106.7105\n}"
+						},
+						"url": {
+							"raw": "{{location_url}}/internal/v1/locations/record",
+							"host": [
+								"{{location_url}}"
+							],
+							"path": [
+								"internal",
+								"v1",
+								"locations",
+								"record"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "L-01d Record D4 Location",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"var res = pm.response.json();",
+									"pm.test(\"Record D4 success\", function () {",
+									"    pm.expect(res.success).to.be.true;",
+									"    pm.expect(res.data.success).to.be.true;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"driver_id\": \"{{d4_id}}\",\n  \"latitude\": 10.7985,\n  \"longitude\": 106.7240\n}"
+						},
+						"url": {
+							"raw": "{{location_url}}/internal/v1/locations/record",
+							"host": [
+								"{{location_url}}"
+							],
+							"path": [
+								"internal",
+								"v1",
+								"locations",
+								"record"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "L-01e Record D5 Location",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"var res = pm.response.json();",
+									"pm.test(\"Record D5 success\", function () {",
+									"    pm.expect(res.success).to.be.true;",
+									"    pm.expect(res.data.success).to.be.true;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"driver_id\": \"{{d5_id}}\",\n  \"latitude\": 10.8185,\n  \"longitude\": 106.6588\n}"
+						},
+						"url": {
+							"raw": "{{location_url}}/internal/v1/locations/record",
+							"host": [
+								"{{location_url}}"
+							],
+							"path": [
+								"internal",
+								"v1",
+								"locations",
+								"record"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "L-02 Query Candidates Around P1",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"var res = pm.response.json();",
+									"pm.test(\"Candidates found and ordered\", function () {",
+									"    pm.expect(res.success).to.be.true;",
+									"    pm.expect(res.data.candidates).to.be.an('array');",
+									"    pm.expect(res.data.candidates.length).to.be.at.least(4);",
+									"    pm.expect(res.data.candidates[0].driver_id).to.eql(pm.collectionVariables.get(\"d1_id\"));",
+									"    for (var i = 1; i < res.data.candidates.length; i++) {",
+									"        pm.expect(res.data.candidates[i].distance_m).to.be.at.least(res.data.candidates[i-1].distance_m);",
+									"    }",
+									"    var ids = res.data.candidates.map(function(c) { return c.driver_id; });",
+									"    pm.expect(ids).to.not.include(pm.collectionVariables.get(\"d5_id\"));",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"pickup_lat\": 10.7725,\n  \"pickup_lng\": 106.6980,\n  \"radius_km\": 5.0\n}"
+						},
+						"url": {
+							"raw": "{{location_url}}/internal/v1/locations/candidates",
+							"host": [
+								"{{location_url}}"
+							],
+							"path": [
+								"internal",
+								"v1",
+								"locations",
+								"candidates"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "L-03 Query Geohash Drivers w3gv7",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"var res = pm.response.json();",
+									"pm.test(\"D1 in w3gv7\", function () {",
+									"    pm.expect(res.success).to.be.true;",
+									"    pm.expect(res.data.driver_ids).to.be.an('array');",
+									"    pm.expect(res.data.driver_ids).to.include(pm.collectionVariables.get(\"d1_id\"));",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"geohash5\": \"w3gv7\"\n}"
+						},
+						"url": {
+							"raw": "{{location_url}}/internal/v1/locations/geohash-drivers",
+							"host": [
+								"{{location_url}}"
+							],
+							"path": [
+								"internal",
+								"v1",
+								"locations",
+								"geohash-drivers"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "L-04 Admin Get Active Drivers",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"var res = pm.response.json();",
+									"pm.test(\"Active drivers list returned\", function () {",
+									"    pm.expect(res.success).to.be.true;",
+									"    pm.expect(res.data.drivers).to.be.an('array');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-User-Role",
+								"value": "ADMIN"
+							},
+							{
+								"key": "X-User-Id",
+								"value": "{{admin_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{location_url}}/api/v1/admin/drivers/active",
+							"host": [
+								"{{location_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"drivers",
+								"active"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "L-05 Forbidden Driver Get Active Drivers",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 403\", function () {",
+									"    pm.response.to.have.status(403);",
+									"});",
+									"var res = pm.response.json();",
+									"pm.test(\"Error code is FORBIDDEN\", function () {",
+									"    pm.expect(res.success).to.be.false;",
+									"    pm.expect(res.error.code).to.eql(\"FORBIDDEN\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-User-Role",
+								"value": "DRIVER"
+							},
+							{
+								"key": "X-User-Id",
+								"value": "{{d1_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{location_url}}/api/v1/admin/drivers/active",
+							"host": [
+								"{{location_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"drivers",
+								"active"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "L-06a Validation Error Latitude Out of Range",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"var res = pm.response.json();",
+									"pm.test(\"Error code is VALIDATION_ERROR\", function () {",
+									"    pm.expect(res.success).to.be.false;",
+									"    pm.expect(res.error.code).to.eql(\"VALIDATION_ERROR\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"driver_id\": \"{{d1_id}}\",\n  \"latitude\": 90.0,\n  \"longitude\": 106.6992\n}"
+						},
+						"url": {
+							"raw": "{{location_url}}/internal/v1/locations/record",
+							"host": [
+								"{{location_url}}"
+							],
+							"path": [
+								"internal",
+								"v1",
+								"locations",
+								"record"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "L-06b Validation Error Invalid UUID",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"var res = pm.response.json();",
+									"pm.test(\"Error code is VALIDATION_ERROR\", function () {",
+									"    pm.expect(res.success).to.be.false;",
+									"    pm.expect(res.error.code).to.eql(\"VALIDATION_ERROR\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"driver_id\": \"not-a-valid-uuid\",\n  \"latitude\": 10.7738,\n  \"longitude\": 106.6992\n}"
+						},
+						"url": {
+							"raw": "{{location_url}}/internal/v1/locations/record",
+							"host": [
+								"{{location_url}}"
+							],
+							"path": [
+								"internal",
+								"v1",
+								"locations",
+								"record"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "L-06c Validation Error Radius Out of Range",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"var res = pm.response.json();",
+									"pm.test(\"Error code is VALIDATION_ERROR\", function () {",
+									"    pm.expect(res.success).to.be.false;",
+									"    pm.expect(res.error.code).to.eql(\"VALIDATION_ERROR\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"pickup_lat\": 10.7725,\n  \"pickup_lng\": 106.6980,\n  \"radius_km\": 15.0\n}"
+						},
+						"url": {
+							"raw": "{{location_url}}/internal/v1/locations/candidates",
+							"host": [
+								"{{location_url}}"
+							],
+							"path": [
+								"internal",
+								"v1",
+								"locations",
+								"candidates"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "L-06d Validation Error Geohash Invalid Length",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"var res = pm.response.json();",
+									"pm.test(\"Error code is VALIDATION_ERROR\", function () {",
+									"    pm.expect(res.success).to.be.false;",
+									"    pm.expect(res.error.code).to.eql(\"VALIDATION_ERROR\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"geohash5\": \"w3gv\"\n}"
+						},
+						"url": {
+							"raw": "{{location_url}}/internal/v1/locations/geohash-drivers",
+							"host": [
+								"{{location_url}}"
+							],
+							"path": [
+								"internal",
+								"v1",
+								"locations",
+								"geohash-drivers"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "L-06e Validation Error Radius Zero",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"var res = pm.response.json();",
+									"pm.test(\"Error code is VALIDATION_ERROR\", function () {",
+									"    pm.expect(res.success).to.be.false;",
+									"    pm.expect(res.error.code).to.eql(\"VALIDATION_ERROR\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"pickup_lat\": 10.7725,\n  \"pickup_lng\": 106.6980,\n  \"radius_km\": 0\n}"
+						},
+						"url": {
+							"raw": "{{location_url}}/internal/v1/locations/candidates",
+							"host": [
+								"{{location_url}}"
+							],
+							"path": [
+								"internal",
+								"v1",
+								"locations",
+								"candidates"
 							]
 						}
 					},

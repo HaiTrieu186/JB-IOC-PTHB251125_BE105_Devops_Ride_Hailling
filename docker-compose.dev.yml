@@ -13,3 +13,7 @@ services:
   user-service:
     ports:
       - "127.0.0.1:8001:8001"
+
+  location-service:
+    ports:
+      - "127.0.0.1:8002:8002"

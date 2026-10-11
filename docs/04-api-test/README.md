@@ -34,7 +34,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
   - Yêu cầu đăng ký trong folder Seed chấp nhận cả status `201 Created` và `409 Conflict` (khi dữ liệu đã tồn tại sẵn từ lần chạy trước).
 - **Bước 2: Chạy folder kiểm thử của từng service**
   - Chạy folder `01 user-service` để kiểm thử toàn diện 15 kịch bản U-01..U-15.
-  - Các service tiếp theo (`location`, `pricing`, `payment`, `dispatch`) sẽ được bổ sung vào collection theo từng lượt triển khai.
+  - Đã có folder `02 location-service`, các ca L-01..L-06e chạy bằng Postman, L-07 chạy tay. Các service tiếp theo (`pricing`, `payment`, `dispatch`) sẽ được bổ sung vào collection theo từng lượt triển khai.
 
 ---
 

@@ -98,7 +98,7 @@ Bảng chuẩn bị trạng thái hệ thống trước khi thực hiện các k
 | Nhóm kịch bản | Dịch vụ kiểm thử | Tiền điều kiện tài khoản | Tiền điều kiện tọa độ & Redis | Trạng thái dọn dẹp sau kịch bản |
 |---|---|---|---|---|
 | **U-01..U-15** | `user-service` | Chạy folder "00 Seed" để tạo sẵn C1–C3, D1–D5. | Không yêu cầu GPS. | Đưa trạng thái D1 về `OFFLINE`/`ONLINE` như ban đầu. |
-| **L-01..L-05** | `location-service` *(Lượt 2)* | D1–D5 đã đăng ký. | D1–D5 gửi gói tin GPS vào Redis GEO qua REST nội bộ. | Tọa độ lưu trong `drivers:geo`. |
-| **P-01..P-06** | `pricing-service` *(Lượt 3)* | C1 tra cứu báo giá. | D1 có vị trí trong ô `w3gv7` để tính Supply. | Cache pricing hết hạn sau 1h hoặc reset. |
-| **W-01..W-06** | `payment-service` *(Lượt 4)* | C1, C2 đã nạp ví; C3 số dư = 0. | Ví khởi tạo thành công trong `paymentdb`. | Kiểm tra log số dư trước/sau cuốc. |
-| **DP-01..DP-10**| `dispatch-service` *(Lượt 5)* | C1 đặt xe, D1 nhận cuốc. | D1 trạng thái `ONLINE`, GPS $\le 15\text{s}$. | Hủy chuyến hoặc hoàn tất để nhả lock và đưa D1 về `ONLINE`. |
+| **L-01..L-07** | `location-service` *(Lượt 3)* | D1–D5 đã đăng ký. | D1–D5 gửi gói tin GPS vào Redis GEO qua REST nội bộ. | Tọa độ lưu trong `drivers:geo`. |
+| **P-01..P-06** | `pricing-service` *(Lượt 4)* | C1 tra cứu báo giá. | D1 có vị trí trong ô `w3gv7` để tính Supply. | Cache pricing hết hạn sau 1h hoặc reset. |
+| **W-01..W-06** | `payment-service` *(Lượt 6)* | C1, C2 đã nạp ví; C3 số dư = 0. | Ví khởi tạo thành công trong `paymentdb`. | Kiểm tra log số dư trước/sau cuốc. |
+| **DP-01..DP-10**| `dispatch-service` *(Lượt 7)* | C1 đặt xe, D1 nhận cuốc. | D1 trạng thái `ONLINE`, GPS $\le 15\text{s}$. | Hủy chuyến hoặc hoàn tất để nhả lock và đưa D1 về `ONLINE`. |
