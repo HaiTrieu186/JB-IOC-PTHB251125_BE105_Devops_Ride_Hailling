@@ -55,7 +55,8 @@ func main() {
 		addr := ":" + cfg.Port
 		slog.Info("api-gateway HTTP server listening", "port", cfg.Port)
 		if err := app.Listen(addr); err != nil {
-			slog.Info("HTTP server stopped", "error", err)
+			slog.Error("HTTP server failed", "error", err)
+			os.Exit(1)
 		}
 	}()
 

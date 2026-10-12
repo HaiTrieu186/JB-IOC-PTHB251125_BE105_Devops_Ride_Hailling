@@ -163,7 +163,10 @@
 
 ### Đánh giá & Khuyến nghị giới hạn tài nguyên
 
-- **Đánh giá `mem_limit` hiện tại (25 MB):** `api-gateway` tiêu thụ ~4.30 MiB RAM (~17.2% định mức 25 MB). Do Gateway không có DB quan hệ và không có background worker nặng, mức RAM cực kỳ gọn nhẹ và ổn định. Định mức `mem_limit: 25m` và `GOMEMLIMIT: 22MiB` hoàn toàn đủ và tối ưu cho VPS 1 GB.
+- **Đánh giá `mem_limit` hiện tại (25 MB):** 
+  - **Mức tiêu thụ lúc rảnh:** `api-gateway` tiêu thụ ~4.30 MiB RAM (~17.2% định mức 25 MB). Do Gateway không có DB quan hệ và không có background worker nặng, mức RAM cực kỳ gọn nhẹ và ổn định.
+  - **Mức tiêu thụ dưới tải cao điểm (Ca T6 - Benchmark 200 requests `GET /api/v1/wallets/me`, 50 luồng song song qua 2 đợt):** RAM đỉnh đo được đạt ~9.56 MiB (~38.2% định mức 25 MB), tỷ lệ thành công 200/200 requests (100%), RAM đo 1 mẫu sau 2 đợt x 100 request; chưa đo soak dài hạn.
+  - **Kết luận:** Định mức `mem_limit: 25m` và `GOMEMLIMIT: 22MiB` hoàn toàn đủ và an toàn cho VPS 1 GB (đỉnh tải 9.56 MiB còn cách xa ngưỡng cảnh báo 20 MiB).
 - **Xác minh bảo mật & Header Sanitization:** Sanitize middleware xóa sạch toàn bộ header giả mạo `X-User-*` client gửi lên, chỉ gán lại danh tính sau khi giải mã JWT hợp lệ.
 - **Xác minh Fail-Closed:** Khi Redis gặp sự cố, Gateway ngắt truy cập ngay lập tức với HTTP 503 `SERVICE_UNAVAILABLE` thay vì cho qua, bảo đảm an toàn dữ liệu phiên đăng nhập.
 - **Ngân sách RAM toàn hệ thống:** 94.61 MiB / 850 MiB (~11.1% ngân sách tối đa của VPS 1 GB).
@@ -181,6 +184,4 @@
 - **Xử lý số lần giao lại trong Redis Stream PEL (`payment-service` & `pricing-service`):** Lệnh `XREADGROUP ... 0` đọc lại tin nhắn từ PEL không tự động tăng `DeliveredTimes` trên Redis. Do đó, consumer sử dụng `map[string]int` có mutex lock để tự theo dõi: lần đầu thấy tin trong PEL tính là lần giao thứ 2. Nếu vượt quá `MAX_DELIVERY_ATTEMPTS` (5 lần), hệ thống ghi log `ERROR` và `XACK` giải phóng tin nhắn để không tắc nghẽn đường ống.
 - **Lỗi Unused variable & Unused import trong Go vet (dispatch-service):** Trong quá trình triển khai, biến `appErr` và import `fmt` trong một số file impl không sử dụng trực tiếp dẫn tới compiler error.  
   *Cách khắc phục:* Làm sạch toàn bộ biến cục bộ và import thừa trước khi build, đảm bảo `go vet ./...` đạt exit code 0 tuyệt đối.
-- **Xử lý thứ tự định tuyến Fiber tránh nhầm lẫn route động (api-gateway):** Trong Fiber, đăng ký `GET /api/v1/trips/current` bắt buộc phải đứng TRƯỚC `GET /api/v1/trips/:id` để tránh router hiểu nhầm chữ `current` là tham số path `:id`.
-- **Xử lý ép mã lỗi method sai về 404 (api-gateway):** ErrorHandler của `api-gateway` ép tất cả mã 405 Method Not Allowed về 404 `NOT_FOUND` kèm envelope JSON chuẩn, đáp ứng đúng quy định kiểm thử và thiết kế LLD.
 
