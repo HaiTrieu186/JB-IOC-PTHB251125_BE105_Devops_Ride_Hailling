@@ -187,6 +187,42 @@ services:
       timeout: 5s
       retries: 5
 
+  dispatch-service:
+    build: ./services/dispatch-service
+    image: ghcr.io/${GHCR_OWNER:?}/dispatch-service:latest
+    container_name: dispatch-service
+    restart: unless-stopped
+    mem_limit: 30m
+    environment:
+      PORT: "8003"
+      DATABASE_URL: "postgres://dispatch_user:dispatch_pass@postgres:5432/dispatchdb?sslmode=disable"
+      REDIS_ADDR: "redis:6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?}
+      COMMISSION_RATE: ${COMMISSION_RATE:-15}
+      OFFER_RADIUS_KM: ${OFFER_RADIUS_KM:-5}
+      MATCHING_TIMEOUT_SECONDS: ${MATCHING_TIMEOUT_SECONDS:-30}
+      INTERNAL_HTTP_TIMEOUT_MS: ${INTERNAL_HTTP_TIMEOUT_MS:-2000}
+      PRICING_SERVICE_URL: "http://pricing-service:8004"
+      PAYMENT_SERVICE_URL: "http://payment-service:8005"
+      LOCATION_SERVICE_URL: "http://location-service:8002"
+      USER_SERVICE_URL: "http://user-service:8001"
+      GOMEMLIMIT: "26MiB"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8003/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
 volumes:
   postgres_data:
   redis_data:

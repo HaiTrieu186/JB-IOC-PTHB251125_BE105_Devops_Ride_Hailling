@@ -26,4 +26,9 @@ services:
     ports:
       - "127.0.0.1:8005:8005"
 
+  dispatch-service:
+    ports:
+      - "127.0.0.1:8003:8003"
+
+
 

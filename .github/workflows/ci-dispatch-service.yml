@@ -1,0 +1,56 @@
+name: CI dispatch-service
+
+on:
+  push:
+    paths:
+      - 'services/dispatch-service/**'
+      - '.github/workflows/ci-dispatch-service.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: services/dispatch-service/go.mod
+
+      - name: Run vet and build
+        working-directory: services/dispatch-service
+        run: go vet ./... && go build ./...
+
+  build-push:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set lowercase repository owner
+        shell: bash
+        run: echo "OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        run: |
+          docker build \
+            -t ghcr.io/${{ env.OWNER_LC }}/dispatch-service:${{ github.sha }} \
+            -t ghcr.io/${{ env.OWNER_LC }}/dispatch-service:latest \
+            --label org.opencontainers.image.source=https://github.com/${{ github.repository }} \
+            services/dispatch-service
+          docker push ghcr.io/${{ env.OWNER_LC }}/dispatch-service:${{ github.sha }}
+          docker push ghcr.io/${{ env.OWNER_LC }}/dispatch-service:latest

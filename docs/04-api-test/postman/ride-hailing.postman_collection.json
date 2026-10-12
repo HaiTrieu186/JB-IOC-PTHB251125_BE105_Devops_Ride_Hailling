@@ -170,6 +170,16 @@
       "key": "pricing_url",
       "value": "http://127.0.0.1:8004",
       "type": "string"
+    },
+    {
+      "key": "dispatch_url",
+      "value": "http://127.0.0.1:8003",
+      "type": "string"
+    },
+    {
+      "key": "trip_id",
+      "value": "",
+      "type": "string"
     }
   ],
   "item": [
@@ -5148,6 +5158,780 @@
                   "var res = pm.response.json();",
                   "pm.test(\"Error code UNAUTHORIZED\", function () {",
                   "    pm.expect(res.error.code).to.eql(\"UNAUTHORIZED\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05 dispatch-service",
+      "item": [
+        {
+          "name": "DP-00 Healthcheck",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{dispatch_url}}/health",
+              "host": [
+                "{{dispatch_url}}"
+              ],
+              "path": [
+                "health"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Health status ok\", function () {",
+                  "    pm.expect(res.status).to.eql(\"ok\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DP-01a Khách C1 tạo chuyến đi (P1 -> P2)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{c1_id}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "CUSTOMER"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"pickup_lat\": 10.7725, \"pickup_lng\": 106.698, \"pickup_address\": \"Cho Ben Thanh, Quan 1, TP.HCM\", \"dropoff_lat\": 10.7951, \"dropoff_lng\": 106.7218, \"dropoff_address\": \"Landmark 81, Binh Thanh, TP.HCM\"}"
+            },
+            "url": {
+              "raw": "{{dispatch_url}}/api/v1/trips",
+              "host": [
+                "{{dispatch_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "trips"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Trip status is MATCHING\", function () {",
+                  "    pm.expect(res.success).to.be.true;",
+                  "    pm.expect(res.data.status).to.eql(\"MATCHING\");",
+                  "    pm.expect(res.data.fare).to.be.above(0);",
+                  "    pm.collectionVariables.set(\"trip_id\", res.data.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DP-01b Tài xế D1 nhận cuốc (Accept)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{d1_id}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "DRIVER"
+              }
+            ],
+            "url": {
+              "raw": "{{dispatch_url}}/api/v1/trips/{{trip_id}}/accept",
+              "host": [
+                "{{dispatch_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "trips",
+                "{{trip_id}}",
+                "accept"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Trip status is ACCEPTED\", function () {",
+                  "    pm.expect(res.data.status).to.eql(\"ACCEPTED\");",
+                  "    pm.expect(res.data.driver_id).to.eql(pm.collectionVariables.get(\"d1_id\"));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DP-01c Tài xế D1 đến điểm đón (Picking Up)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{d1_id}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "DRIVER"
+              }
+            ],
+            "url": {
+              "raw": "{{dispatch_url}}/api/v1/trips/{{trip_id}}/picking-up",
+              "host": [
+                "{{dispatch_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "trips",
+                "{{trip_id}}",
+                "picking-up"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Trip status is PICKING_UP\", function () {",
+                  "    pm.expect(res.data.status).to.eql(\"PICKING_UP\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DP-01d Tài xế D1 bắt đầu chở (Start Trip)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{d1_id}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "DRIVER"
+              }
+            ],
+            "url": {
+              "raw": "{{dispatch_url}}/api/v1/trips/{{trip_id}}/start-trip",
+              "host": [
+                "{{dispatch_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "trips",
+                "{{trip_id}}",
+                "start-trip"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Trip status is IN_TRIP\", function () {",
+                  "    pm.expect(res.data.status).to.eql(\"IN_TRIP\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DP-01e Tài xế D1 hoàn thành chuyến (Complete)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{d1_id}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "DRIVER"
+              }
+            ],
+            "url": {
+              "raw": "{{dispatch_url}}/api/v1/trips/{{trip_id}}/complete",
+              "host": [
+                "{{dispatch_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "trips",
+                "{{trip_id}}",
+                "complete"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Trip status is COMPLETED\", function () {",
+                  "    pm.expect(res.data.status).to.eql(\"COMPLETED\");",
+                  "    pm.expect(res.data.completed_at).to.be.a(\"string\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DP-01f Khách C1 xem chi tiết chuyến và dòng thời gian",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{c1_id}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "CUSTOMER"
+              }
+            ],
+            "url": {
+              "raw": "{{dispatch_url}}/api/v1/trips/{{trip_id}}",
+              "host": [
+                "{{dispatch_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "trips",
+                "{{trip_id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Detail has completed status and timeline\", function () {",
+                  "    pm.expect(res.data.trip.status).to.eql(\"COMPLETED\");",
+                  "    pm.expect(res.data.status_timeline.length).to.be.above(0);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DP-03 Khách C3 ví thiếu tiền đặt xe",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{c3_id}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "CUSTOMER"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"pickup_lat\": 10.7725, \"pickup_lng\": 106.698, \"pickup_address\": \"Cho Ben Thanh, Quan 1, TP.HCM\", \"dropoff_lat\": 10.7951, \"dropoff_lng\": 106.7218, \"dropoff_address\": \"Landmark 81, Binh Thanh, TP.HCM\"}"
+            },
+            "url": {
+              "raw": "{{dispatch_url}}/api/v1/trips",
+              "host": [
+                "{{dispatch_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "trips"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Error code INSUFFICIENT_BALANCE\", function () {",
+                  "    pm.expect(res.error.code).to.eql(\"INSUFFICIENT_BALANCE\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DP-05 Đặt xe khu vực không có tài xế (Hà Nội)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{c1_id}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "CUSTOMER"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"pickup_lat\": 21.0285, \"pickup_lng\": 105.8542, \"pickup_address\": \"Ho Guom, Ha Noi\", \"dropoff_lat\": 21.035, \"dropoff_lng\": 105.86, \"dropoff_address\": \"Nha Hat Lon, Ha Noi\"}"
+            },
+            "url": {
+              "raw": "{{dispatch_url}}/api/v1/trips",
+              "host": [
+                "{{dispatch_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "trips"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Trip status is EXPIRED\", function () {",
+                  "    pm.expect(res.data.status).to.eql(\"EXPIRED\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DP-08a Admin Force-cancel lý do rỗng",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{admin_id}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "ADMIN"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"reason\": \"   \"}"
+            },
+            "url": {
+              "raw": "{{dispatch_url}}/api/v1/admin/trips/{{trip_id}}/force-cancel",
+              "host": [
+                "{{dispatch_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "trips",
+                "{{trip_id}}",
+                "force-cancel"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Error code VALIDATION_ERROR\", function () {",
+                  "    pm.expect(res.error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DP-08c Admin xem danh sách chuyến có phân trang",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{admin_id}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "ADMIN"
+              }
+            ],
+            "url": {
+              "raw": "{{dispatch_url}}/api/v1/admin/trips?page=1&limit=10",
+              "host": [
+                "{{dispatch_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "trips"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Admin trips response has list\", function () {",
+                  "    pm.expect(res.data.trips).to.be.an(\"array\");",
+                  "    pm.expect(res.data.total).to.be.above(0);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DP-10 Tài xế ngoài bán kính (D5) accept",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{d5_id}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "DRIVER"
+              }
+            ],
+            "url": {
+              "raw": "{{dispatch_url}}/api/v1/trips/{{trip_id}}/accept",
+              "host": [
+                "{{dispatch_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "trips",
+                "{{trip_id}}",
+                "accept"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 403\", function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Error code NOT_OFFERED\", function () {",
+                  "    pm.expect(res.error.code).to.eql(\"NOT_OFFERED\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DP-11 Accept trip_id không tồn tại",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{d1_id}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "DRIVER"
+              }
+            ],
+            "url": {
+              "raw": "{{dispatch_url}}/api/v1/trips/00000000-0000-0000-0000-000000000000/accept",
+              "host": [
+                "{{dispatch_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "trips",
+                "00000000-0000-0000-0000-000000000000",
+                "accept"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 404\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Error code TRIP_NOT_FOUND\", function () {",
+                  "    pm.expect(res.error.code).to.eql(\"TRIP_NOT_FOUND\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DP-12a Tài xế gọi POST /trips",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{d1_id}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "DRIVER"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"pickup_lat\": 10.7725, \"pickup_lng\": 106.698, \"pickup_address\": \"Cho Ben Thanh, Quan 1, TP.HCM\", \"dropoff_lat\": 10.7951, \"dropoff_lng\": 106.7218, \"dropoff_address\": \"Landmark 81, Binh Thanh, TP.HCM\"}"
+            },
+            "url": {
+              "raw": "{{dispatch_url}}/api/v1/trips",
+              "host": [
+                "{{dispatch_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "trips"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 403\", function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Error code FORBIDDEN\", function () {",
+                  "    pm.expect(res.error.code).to.eql(\"FORBIDDEN\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DP-14a Admin xem chi tiết qua GET /trips/:id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{admin_id}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "ADMIN"
+              }
+            ],
+            "url": {
+              "raw": "{{dispatch_url}}/api/v1/trips/{{trip_id}}",
+              "host": [
+                "{{dispatch_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "trips",
+                "{{trip_id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 403\", function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Error code FORBIDDEN\", function () {",
+                  "    pm.expect(res.error.code).to.eql(\"FORBIDDEN\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DP-15 Khách xem chuyến hiện tại khi rảnh",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{c1_id}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "CUSTOMER"
+              }
+            ],
+            "url": {
+              "raw": "{{dispatch_url}}/api/v1/trips/current",
+              "host": [
+                "{{dispatch_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "trips",
+                "current"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Data is null when no active trip\", function () {",
+                  "    pm.expect(res.data).to.be.null;",
                   "});"
                 ]
               }

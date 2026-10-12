@@ -115,7 +115,34 @@
 
 ---
 
-## 6. Nhật ký gỡ lỗi (Debugging Log)
+## 6. Triển khai `dispatch-service` (Lượt 7)
+
+Đo kiểm sau khi chạy toàn bộ chuỗi 15 kịch bản kiểm thử nghiệp vụ (luồng đầy đủ C1 + D1 tạo chuyến -> matching -> accept -> picking-up -> start-trip -> complete -> quyết toán ví khách/tài xế, 2 tài xế tranh cuốc đồng thời với Redis SET NX, ví không đủ INSUFFICIENT_BALANCE, đặt trùng ACTIVE_TRIP_EXISTS, 0 tài xế EXPIRED, hết 30s TIMEOUT_30S với background sweeper worker 2s, các nhánh hủy của khách/tài xế, admin force-cancel và phân trang, accept idempotent, RBAC và validation dải tọa độ/phân trang).  
+*Ghi chú môi trường:* Số đo thực tế dưới đây được lấy từ Docker Desktop trên máy dev nội bộ sau khi hoàn thành chuỗi kiểm thử tự động.
+
+### Kết quả `docker stats --no-stream`
+
+| Container | CPU % | RAM Hiện tại (MEM USAGE) | Giới hạn (LIMIT) | Tỷ lệ RAM (MEM %) | NET I/O | BLOCK I/O | PIDs | Trạng thái |
+|---|---|---|---|---|---|---|---|---|
+| `dispatch-service` | 0.08% | 8.58 MiB | 30 MiB | 28.59% | 169 kB / 260 kB | 0 B / 0 B | 13 | Healthy |
+| `payment-service` | 1.91% | 9.19 MiB | 30 MiB | 30.63% | 473 kB / 681 kB | 2.42 MB / 0 B | 11 | Healthy |
+| `pricing-service` | 0.07% | 15.54 MiB | 30 MiB | 51.80% | 752 kB / 1.05 MB | 332 MB / 51.3 MB | 17 | Healthy |
+| `location-service` | 0.04% | 12.86 MiB | 25 MiB | 51.45% | 110 kB / 114 kB | 21.5 MB / 0 B | 16 | Healthy |
+| `user-service` | 0.01% | 16.07 MiB | 30 MiB | 53.57% | 91.5 kB / 102 kB | 338 MB / 8.34 MB | 17 | Healthy |
+| `postgres` | 0.03% | 53.81 MiB | 200 MiB | 26.91% | 303 kB / 208 kB | 49.9 MB / 3.73 MB | 11 | Healthy |
+| `redis` | 0.51% | 9.88 MiB | 60 MiB | 16.47% | 1.31 MB / 860 kB | 5.55 MB / 197 kB | 6 | Healthy |
+| **Tổng cộng** | - | **125.93 MiB** | **405 MiB** | - | - | - | 91 | - |
+
+### Đánh giá & Khuyến nghị giới hạn tài nguyên
+
+- **Đánh giá `mem_limit` hiện tại (30 MB):** `dispatch-service` tiêu thụ ~8.58 MiB RAM (~28.6% định mức 30 MB), mức tiêu thụ rất thấp dù tích hợp đồng thời kết nối PostgreSQL connection pool (10 open, 3 idle), Redis client, background sweeper ticker 2s/lần quét quá hạn, và HTTP client gọi 4 microservice phụ thuộc. Định mức `mem_limit: 30m` và `GOMEMLIMIT: 26MiB` hoàn toàn đủ và tối ưu cho VPS 1 GB.
+- **Xác minh Distributed Lock & Hoàn tác:** Khóa phân tán `ride:lock:<trip_id>` kết hợp Lua Script `compare-and-delete` ngăn chặn thành công hiện tượng race condition khi 2 tài xế cùng bấm accept; cơ chế rollback BUSY -> ONLINE retry 3 lần đảm bảo không làm kẹt trạng thái tài xế khi nhận cuốc thất bại.
+- **Xác minh Worker quét quá hạn:** Background worker quét định kỳ mỗi 2 giây giải phóng chính xác các chuyến quá hạn 30 giây sang `EXPIRED`, ghi log timeline `TIMEOUT_30S` và phát sự kiện `TripExpired` ra Redis Stream.
+- **Ngân sách RAM toàn hệ thống:** 125.93 MiB / 850 MiB (~14.8% ngân sách tối đa của VPS 1 GB).
+
+---
+
+## 7. Nhật ký gỡ lỗi (Debugging Log)
 
 - **Lỗi escape ký tự JSON trong PowerShell khi gọi `curlimages/curl`:** Khi chạy câu lệnh PowerShell với cờ `-d '{...}'`, PowerShell tự động bóc tách dấu nháy kép khiến parser JSON của Go nhận payload bị lỗi cú pháp `VALIDATION_ERROR`.  
   *Cách khắc phục:* Chuyển sang kỹ thuật truyền dữ liệu qua stdin (`<json> | docker run -i ... curlimages/curl --data-binary "@-"`) hoặc dùng test runner tự động giúp payload JSON được bảo toàn nguyên vẹn 100%. (Lưu ý cờ `@-` phải đặt trong dấu nháy kép `"@-"` trên PowerShell để không bị lỗi token).
@@ -124,4 +151,6 @@
 - **Lỗi xung đột multiple default values trên cột `id` bảng `pricing_configs` trong GORM PostgreSQL:** Khi khai báo `ID int `gorm:"primaryKey;default:1"``, GORM tự động tạo sequence auto-increment và gán default là `nextval(...)`, đồng thời tag `default:1` lại gán thêm 1 default nữa, gây lỗi `ERROR: multiple default values specified for column "id" of table "pricing_configs" (SQLSTATE 42601)`.  
   *Cách khắc phục:* Khai báo tường minh `gorm:"primaryKey;type:integer;default:1;autoIncrement:false"` giúp GORM tạo đúng DDL `id integer PRIMARY KEY DEFAULT 1` mà không thêm sequence ngầm định.
 - **Xử lý số lần giao lại trong Redis Stream PEL (`payment-service` & `pricing-service`):** Lệnh `XREADGROUP ... 0` đọc lại tin nhắn từ PEL không tự động tăng `DeliveredTimes` trên Redis. Do đó, consumer sử dụng `map[string]int` có mutex lock để tự theo dõi: lần đầu thấy tin trong PEL tính là lần giao thứ 2. Nếu vượt quá `MAX_DELIVERY_ATTEMPTS` (5 lần), hệ thống ghi log `ERROR` và `XACK` giải phóng tin nhắn để không tắc nghẽn đường ống.
+- **Lỗi Unused variable & Unused import trong Go vet (dispatch-service):** Trong quá trình triển khai, biến `appErr` và import `fmt` trong một số file impl không sử dụng trực tiếp dẫn tới compiler error.  
+  *Cách khắc phục:* Làm sạch toàn bộ biến cục bộ và import thừa trước khi build, đảm bảo `go vet ./...` đạt exit code 0 tuyệt đối.
 
