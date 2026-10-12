@@ -88,8 +88,9 @@ docker start redis
   3. Thực hiện `SET blacklist:t0-empty-val ""` trên Redis. Gọi lại -> **401 Unauthorized** (`"Token đã bị thu hồi"`).
   4. Thực hiện `DEL blacklist:t0-empty-val`. Gọi lại -> **200 OK**.
 - **Kết quả thực tế:**
-  - Bước (1) Gọi đối chứng khi chưa blacklist: **HTTP 200 OK**, Body: `{"data":{"wallet_id":"ca529da2-4678-4d4c-bb4e-30cab7190f9d","balance":925000,"currency":"VND"},"error":null,"success":true}`
-  - Bước (2) và (3): **KHÔNG CHẠY ĐƯỢC** trên môi trường dev do lệnh `docker compose exec -T redis redis-cli ...` bị treo không phản hồi (tiến trình Docker CLI Windows bị tắc nghẽn Named Pipe sau sự cố cạn kiệt ổ đĩa C:).
+  - Bước (1) Gọi đối chứng khi chưa blacklist: **HTTP 200 OK**, Body: `{"data":{"wallet_id":"ca529da2-4678-4d4c-bb4e-30cab7190f9d","balance":1718000,"currency":"VND"},"error":null,"success":true}`
+  - Bước (2) SET `blacklist:t0-empty-val ""` trên Redis: `SET` trả về `OK`, `GET` trả về chuỗi rỗng `""` (`repr: '\n'`), `EXISTS` trả về `1`. Gọi lại `GET /api/v1/wallets/me` -> **HTTP 401 Unauthorized**, Body: `{"data":null,"error":{"code":"UNAUTHORIZED","message":"Token đã bị thu hồi"},"success":false}`.
+  - Bước (3) DEL `blacklist:t0-empty-val`: `DEL` trả về `1`, `EXISTS` trả về `0`. Gọi lại `GET /api/v1/wallets/me` -> **HTTP 200 OK**, Body: `{"data":{"wallet_id":"ca529da2-4678-4d4c-bb4e-30cab7190f9d","balance":1718000,"currency":"VND"},"error":null,"success":true}`.
 
 #### GW-19: Chuyển tiếp Query string và phân trang (`T1`)
 - **Lệnh thực thi:**
@@ -139,7 +140,13 @@ docker start redis
   docker unpause pricing-service
   ```
 - **Kỳ vọng:** HTTP/1.1 503 Service Unavailable, code `SERVICE_UNAVAILABLE` sau 14-17 giây.
-- **Kết quả thực tế:** **KHÔNG CHẠY ĐƯỢC**. Lệnh `docker pause pricing-service` bị Timeout (`KHONG CHAY DUOC: Lenh 'docker pause pricing-service' bi Timeout (Docker CLI Named Pipe bi treo khong phan hoi)`). Do lệnh pause không thể thực thi nên không thể đo thời gian timeout thực tế của backend; service `pricing-service` đã được đảm bảo không bị pause.
+- **Kết quả thực tế:** Thực thi script `scratch/test_gw23_t5.py` (khối `try/finally` bảo đảm luôn unpause `pricing-service`):
+  - Lệnh `docker pause pricing-service`: returncode 0.
+  - Gọi `POST /api/v1/pricing/estimate` qua port 8080: Gateway chờ 15.00 giây (đúng cấu hình `PROXY_TIMEOUT_MS=15000`) và trả về:
+    - Status: **HTTP/1.1 503 Service Unavailable**
+    - Body: `{"data":null,"error":{"code":"SERVICE_UNAVAILABLE","message":"Dịch vụ đích không phản hồi hoặc quá thời gian chờ"},"success":false}`
+    - Thời gian đo: **15.00 giây**.
+  - Khối `finally` unpause thành công `pricing-service` (returncode 0), container phục hồi trạng thái `healthy`.
 
 
 #### GW-24: Đo kiểm tài nguyên RAM Gateway dưới tải 200 requests (`T6`)

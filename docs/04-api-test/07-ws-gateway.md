@@ -28,21 +28,21 @@ Bộ kịch bản kiểm thử bao gồm **16 ca kiểm thử chi tiết**:
 | Mã KT | Tên kịch bản | Giao thức & Endpoint | Headers / Tham số | Payload gửi lên | Kỳ vọng Kết quả & Mã đóng | Ghi chú & Dữ liệu tham chiếu |
 |:---:|---|---|---|---|---|---|
 | **WS-01** | Kiểm tra sức khỏe dịch vụ | `GET /health` | *(None)* | *(None)* | **200 OK**<br>`{"status":"ok"}` | Endpoint kiểm tra liveness của container. |
-| **WS-02** | Bắt lỗi thiếu Token xác thực | `GET /ws/` (Upgrade) | `Connection: Upgrade`<br>`Upgrade: websocket`<br>`Sec-WebSocket-Key: ...` | *(None)* | **401 Unauthorized**<br>`UNAUTHORIZED` | Bị từ chối TRƯỚC khi upgrade WebSocket. |
+| **WS-02** | Bắt lỗi thiếu Token xác thực | `GET /ws/` (Upgrade) | `Connection: Upgrade`<br>`Upgrade: websocket`<br>`Sec-WebSocket-Key: ...` | *(None)* | **401 Unauthorized**<br>`UNAUTHORIZED` | Ghi nhận từ báo cáo lượt 9; output thô không lưu, chưa kiểm lại độc lập. |
 | **WS-03** | Chặn truyền Token qua Query Param | `GET /ws/?token={{token}}` (Upgrade) | `Connection: Upgrade`<br>`Upgrade: websocket` | *(None)* | **401 Unauthorized**<br>`UNAUTHORIZED` | Token chỉ được chấp nhận qua header `Authorization`. |
-| **WS-04** | Chặn Token sai chữ ký / alg none / hết hạn | `GET /ws/` (Upgrade) | `Authorization: Bearer <invalid_jwt>` | *(None)* | **401 Unauthorized**<br>`UNAUTHORIZED` | Thư viện JWT xác thực thuật toán HS256 và hạn dùng `exp`. |
+| **WS-04** | Chặn Token sai chữ ký / alg none / hết hạn | `GET /ws/` (Upgrade) | `Authorization: Bearer <invalid_jwt>` | *(None)* | **401 Unauthorized**<br>`UNAUTHORIZED` | Ghi nhận từ báo cáo lượt 9; output thô không lưu, chưa kiểm lại độc lập. |
 | **WS-05** | Chặn Token đã đăng xuất (Blacklist) | `GET /ws/` (Upgrade) | `Authorization: Bearer {{logged_out_jwt}}` | *(None)* | **401 Unauthorized**<br>`UNAUTHORIZED` | Tra cứu Redis `blacklist:<jti>` thấy tồn tại key. |
-| **WS-06** | Chặn Handshake từ Quản trị viên (ADMIN) | `GET /ws/` (Upgrade) | `Authorization: Bearer {{admin_jwt}}` | *(None)* | **403 Forbidden**<br>`FORBIDDEN` | Admin không sử dụng WebSocket. |
-| **WS-07** | Từ chối HTTP Request thường không có Upgrade | `GET /ws/` | `Authorization: Bearer {{d1_jwt}}` | *(None)* | **426 Upgrade Required**<br>`UPGRADE_REQUIRED` | Không phải yêu cầu nâng cấp giao thức WebSocket. |
-| **WS-08** | Luồng nghiệp vụ End-to-End qua WebSocket | `WS /ws/` | `Authorization: Bearer {{d1_jwt}}`<br>`Authorization: Bearer {{c1_jwt}}` | D1: `{"latitude":10.7738,"longitude":106.6992}` | D1 nhận `TRIP_OFFERED`<br>C1 & D1 nhận `TRIP_STATUS_UPDATED`<br>C1 nhận `DRIVER_LOCATION_UPDATED` | C1 chỉ nhận GPS của D1 sau khi D1 đã ACCEPT và trước COMPLETED. |
-| **WS-09** | Đo độ trễ chuyển tiếp vị trí tài xế -> khách | `WS /ws/` | C1 & D1 kết nối trong cùng cuốc xe | D1 gửi tọa độ liên tục | $p50 < 10\text{ ms}$, $p95 < 500\text{ ms}$ | Kết quả thực tế: $p50 = 1.96\text{ ms}$, $p95 = 2.98\text{ ms}$. |
-| **WS-10** | Đăng xuất ngắt kết nối WebSocket | `WS /ws/` | D1 đang kết nối | D1 gọi `POST /api/v1/auth/logout` | Kết nối WS của D1 bị đóng với **Mã 1000 (Normal)** | `user-service` phát Pub/Sub `ride:ws_control` DISCONNECT. |
-| **WS-11** | Chặn quá tải MAX_CONNECTIONS | `GET /ws/` (Upgrade) | Kết nối thứ 3 khi cấu hình `MAX_CONNECTIONS=2` | *(None)* | **503 Service Unavailable**<br>`SERVICE_UNAVAILABLE` | Cơ chế bảo vệ tài nguyên chống cạn kiệt bộ nhớ. |
-| **WS-12** | Heartbeat Ping/Pong quá hạn đóng kết nối | `WS /ws/` | Client cấu hình `autoping=False` | Không gửi lại Pong | Bị đóng kết nối với **Mã 1001 (Going Away)** sau ~5 giây | Server gửi Ping mỗi 2s, timeout Pong 5s. |
-| **WS-13** | Xử lý frame rác và frame quá cỡ | `WS /ws/` | D1 gửi text rác / tọa độ 999 / thiếu trường / frame > 4096B | Frame sai: bỏ qua, giữ kết nối<br>Frame > 4096B: **Đóng 1009** | Server không crash, kết nối hợp lệ duy trì an toàn. |
-| **WS-14** | Bỏ qua tọa độ gửi từ khách hàng (CUSTOMER) | `WS /ws/` | C1 kết nối và gửi payload GPS | `{"latitude":10.77,"longitude":106.69}` | Bỏ qua im lặng, không ghi vào Redis `drivers:geo` | Chỉ tài xế mới được quyền cập nhật vị trí. |
-| **WS-15** | Khả năng chịu lỗi (Resilience) | `WS /ws/` | Dừng `location-service` hoặc `redis` | D1 gửi GPS / Tạo cuốc mới | location tắt: C1 vẫn nhận GPS<br>redis tắt: 503<br>redis bật lại: auto-resubscribe nhận cuốc | Hệ thống phục hồi mượt mà không cần can thiệp thủ công. |
-| **WS-16** | Đo kiểm định mức bộ nhớ RAM | `WS /ws/` | 100 kết nối đồng thời với token C1 | Duy trì kết nối | RAM 0 conn: **4.60 MiB**<br>RAM 100 conn: **8.28 MiB** (< 24 MiB) | Tiết kiệm RAM vượt chuẩn thiết kế VPS 1 GB. |
+| **WS-06** | Chặn Handshake từ Quản trị viên (ADMIN) | `GET /ws/` (Upgrade) | `Authorization: Bearer {{admin_jwt}}` | *(None)* | **403 Forbidden**<br>`FORBIDDEN` | Ghi nhận từ báo cáo lượt 9; output thô không lưu, chưa kiểm lại độc lập. |
+| **WS-07** | Từ chối HTTP Request thường không có Upgrade | `GET /ws/` | `Authorization: Bearer {{d1_jwt}}` | *(None)* | **426 Upgrade Required**<br>`UPGRADE_REQUIRED` | Ghi nhận từ báo cáo lượt 9; output thô không lưu, chưa kiểm lại độc lập. |
+| **WS-08** | Luồng nghiệp vụ End-to-End qua WebSocket | `WS /ws/` | `Authorization: Bearer {{d1_jwt}}`<br>`Authorization: Bearer {{c1_jwt}}` | D1: `{"latitude":10.7738,"longitude":106.6992}` | D1 nhận `TRIP_OFFERED`<br>C1 & D1 nhận `TRIP_STATUS_UPDATED`<br>C1 nhận `DRIVER_LOCATION_UPDATED` | Ghi nhận từ báo cáo lượt 9; output thô không lưu, chưa kiểm lại độc lập. |
+| **WS-09** | Đo độ trễ chuyển tiếp vị trí tài xế -> khách | `WS /ws/` | C1 & D1 kết nối trong cùng cuốc xe | D1 gửi tọa độ liên tục | $p50 < 10\text{ ms}$, $p95 < 500\text{ ms}$ | 1 tài xế, loopback, 35 mẫu; kịch bản 100 tài xế đo ở Lượt 10. |
+| **WS-10** | Đăng xuất ngắt kết nối WebSocket | `WS /ws/` | D1 đang kết nối | D1 gọi `POST /api/v1/auth/logout` | Kết nối WS của D1 bị đóng với **Mã 1000 (Normal)** | Ghi nhận từ báo cáo lượt 9; output thô không lưu, chưa kiểm lại độc lập. |
+| **WS-11** | Chặn quá tải MAX_CONNECTIONS | `GET /ws/` (Upgrade) | Kết nối thứ 3 khi cấu hình `MAX_CONNECTIONS=2` | *(None)* | **503 Service Unavailable**<br>`SERVICE_UNAVAILABLE` | Ghi nhận từ báo cáo lượt 9; output thô không lưu, chưa kiểm lại độc lập. |
+| **WS-12** | Heartbeat Ping/Pong quá hạn đóng kết nối | `WS /ws/` | Client cấu hình `autoping=False` | Không gửi lại Pong | Bị đóng kết nối với **Mã 1001 (Going Away)** sau ~5 giây | Ghi nhận từ báo cáo lượt 9; output thô không lưu, chưa kiểm lại độc lập. |
+| **WS-13** | Xử lý frame rác và frame quá cỡ | `WS /ws/` | D1 gửi text rác / tọa độ 999 / thiếu trường / frame > 4096B | Frame sai: bỏ qua, giữ kết nối<br>Frame > 4096B: **Đóng 1009** | Ghi nhận từ báo cáo lượt 9; output thô không lưu, chưa kiểm lại độc lập. |
+| **WS-14** | Bỏ qua tọa độ gửi từ khách hàng (CUSTOMER) | `WS /ws/` | C1 kết nối và gửi payload GPS | `{"latitude":10.77,"longitude":106.69}` | Bỏ qua im lặng, không ghi vào Redis `drivers:geo` | Ghi nhận từ báo cáo lượt 9; output thô không lưu, chưa kiểm lại độc lập. |
+| **WS-15** | Khả năng chịu lỗi (Resilience) | `WS /ws/` | Dừng `location-service` hoặc `redis` | D1 gửi GPS / Tạo cuốc mới | location tắt: C1 vẫn nhận GPS<br>redis tắt: 503<br>redis bật lại: auto-resubscribe nhận cuốc | Redis dừng/bật đã kiểm lại ở Lượt 9x (Ca 12: 503 sau 1.02s, auto-resubscribe cuốc mới). Nhánh dừng location-service: Ghi nhận từ báo cáo lượt 9; output thô không lưu, chưa kiểm lại độc lập. |
+| **WS-16** | Đo kiểm định mức bộ nhớ RAM | `WS /ws/` | 100 kết nối đồng thời với token C1 | Duy trì kết nối | RAM 0 conn: **4.60 MiB**<br>RAM 100 conn: **8.28 MiB** (< 24 MiB) | Đo kiểm thực tế trên máy dev (Docker Desktop). |
 
 ---
 
@@ -93,28 +93,75 @@ curl.exe -i -H "Authorization: Bearer <driver_token>" http://127.0.0.1:8081/ws/
 
 ### 3.3. Kiểm thử kết nối WebSocket bằng công cụ tạm thời (`websocat`)
 
-Kiểm thử tương tác hai chiều bên trong mạng Docker `backend-net`:
+Kiểm thử bằng container `solsson/websocat` trong mạng Docker `backend-net` (không dùng cờ TTY `-t` / `-it`):
 
 ```powershell
-# Chạy websocat container kết nối tới ws-gateway:8081
-docker run --rm -it --network backend-net solsson/websocat -H="Authorization: Bearer <driver_token>" ws://ws-gateway:8081/ws/
-```
-Sau khi kết nối, gõ tọa độ JSON:
-```json
-{"latitude": 10.7738, "longitude": 106.6992}
+# Chạy websocat với token tài xế D1 (giữ stdin mở 5 giây):
+(echo '{"latitude":10.7738,"longitude":106.6992}'; sleep 5) | docker run -i --rm --network backend-net solsson/websocat -v -H="Authorization: Bearer <d1_token>" ws://ws-gateway:8081/ws/
+
+# Ca đối chứng: Chạy KHÔNG header Authorization (kỳ vọng bị từ chối):
+(echo '{"latitude":10.7738,"longitude":106.6992}'; sleep 5) | docker run -i --rm --network backend-net solsson/websocat -v ws://ws-gateway:8081/ws/
 ```
 
 ---
 
 ## 4. KẾT QUẢ ĐO KIỂM THỰC TẾ
 
-1. **Toàn bộ 16 ca kiểm thử đạt kết quả 100%:**
-   - Handshake Guard chặn chính xác mọi trường hợp vi phạm bảo mật theo đúng thứ tự ưu tiên.
-   - Luồng sự kiện chuyến đi và cập nhật vị trí thời gian thực hoạt động đồng bộ với `dispatch-service` và `api-gateway`.
-2. **Độ trễ chuyển tiếp vị trí tài xế -> khách hàng:**
+### 4.1. Các ca đã kiểm tra độc lập và ghi nhận output thật (Lượt 9x)
+
+1. **Ca 12 - Khả năng chịu lỗi Redis (Dừng/Bật & Auto-Resubscribe) (`scratch/ws_redis_failover.py`):**
+   - Lệnh `docker stop redis`: thực thi xong trong 0.31s.
+   - Thử nghiệm handshake mới khi Redis dừng: `HTTP/1.1 503 Service Unavailable`, body `{"data":null,"error":{"code":"SERVICE_UNAVAILABLE","message":"Dịch vụ xác thực tạm thời không khả dụng"},"success":false}`, thời gian đo 1.02s (đúng timeout 1.0s của Handshake Guard).
+   - Lệnh `docker start redis`: Redis khởi động và đạt trạng thái `healthy`.
+   - Kết nối WebSocket cũ của tài xế D1 và khách hàng C1 (mở trước khi dừng Redis) tự động nhận được các sự kiện sau khi Redis hoạt động lại:
+     - D1 nhận JSON frame `TRIP_OFFERED`:
+       ```json
+       {
+         "event": "TRIP_OFFERED",
+         "trip_id": "f6953a79-68f3-4861-910a-d6cdee677138",
+         "pickup_lat": 10.7725,
+         "pickup_lng": 106.698,
+         "fare": 69000,
+         "driver_fare": 58650,
+         "distance_m": 195,
+         "expire_at": "2026-10-12T09:21:19Z"
+       }
+       ```
+     - Sau khi D1 chấp nhận cuốc qua REST `POST /trips/{id}/accept`, C1 nhận JSON frame `TRIP_STATUS_UPDATED`:
+       ```json
+       {
+         "event": "TRIP_STATUS_UPDATED",
+         "trip_id": "f6953a79-68f3-4861-910a-d6cdee677138",
+         "status": "ACCEPTED",
+         "updated_at": "2026-10-12T09:20:49Z"
+       }
+       ```
+
+2. **Ca kiểm tra dọn session ("Dọn session không rò") (`scratch/ws_session_cleanup.py`):**
+   - Kịch bản: 1 token mở 100 kết nối đồng thời, đóng toàn bộ, lặp 4 lần liên tiếp (tổng 400 kết nối > ngưỡng `MAX_CONNECTIONS=300`).
+   - Lần 1: Mở thành công 100/100 kết nối (Lỗi: 0).
+   - Lần 2: Mở thành công 100/100 kết nối (Lỗi: 0).
+   - Lần 3: Mở thành công 100/100 kết nối (Lỗi: 0).
+   - Lần 4: Mở thành công 100/100 kết nối (Lỗi: 0).
+   - Kết quả `docker stats --no-stream ws-gateway` sau lần đóng cuối (chờ 5 giây):
+     - `MEM USAGE / LIMIT`: `14.2MiB / 30MiB` (`MEM %`: `47.34%`), PIDs: `18`.
+
+3. **Ca kiểm thử bằng `solsson/websocat` (`scratch/test_websocat.py`):**
+   - Chạy với container `solsson/websocat`, không dùng cờ TTY, truyền header `-H="Authorization: Bearer <d1_token>"`:
+     - Log `-v`: `[INFO  websocat::ws_client_peer] Connected to ws`, exit code: 0.
+   - Ca đối chứng không truyền header:
+     - Log `-v`: `websocat: WebSocketError: WebSocket response error`, exit code: 1.
+
+4. **Đo độ trễ chuyển tiếp vị trí tài xế -> khách hàng (DRIVER_LOCATION_UPDATED):**
+   - Cấu hình: 1 tài xế, loopback, 35 mẫu; kịch bản 100 tài xế đo ở Lượt 10.
    - $p50 = 1.96\text{ ms}$, $p95 = 2.98\text{ ms}$, $\max = 3.52\text{ ms}$.
-   - Đáp ứng vượt xa chỉ tiêu đề tài ($p95 < 500\text{ ms}$).
-3. **Tiêu thụ tài nguyên bộ nhớ:**
+
+5. **Tiêu thụ tài nguyên bộ nhớ:**
    - 0 kết nối: **4.60 MiB** / 30 MiB.
    - 100 kết nối: **8.28 MiB** / 30 MiB.
-   - Không rò rỉ bộ nhớ, giải phóng kết nối tức thì khi ngắt session.
+
+### 4.2. Các ca không chạy lại trong lượt này (Ca 2, 4, 6, 7, 8, 9, 10, 11 của chuỗi Lượt 9)
+- Ghi nhận từ báo cáo lượt 9; output thô không lưu, chưa kiểm lại độc lập.
+
+### 4.3. Chưa kiểm
+- `SLOW_CLIENT` (mã đóng 1008 khi buffer client đầy): Chưa có ca kiểm thử tự động.

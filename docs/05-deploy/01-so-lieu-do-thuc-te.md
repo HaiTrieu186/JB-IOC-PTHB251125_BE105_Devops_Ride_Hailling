@@ -192,24 +192,29 @@
 | `user-service` | 2.02% | 16.77 MiB | 30 MiB | 55.90% | 79.2 kB / 76.1 kB | 269 MB / 7.23 MB | 14 | Healthy |
 | `postgres` | 2.68% | 52.53 MiB | 200 MiB | 26.27% | 584 kB / 307 kB | 50.5 MB / 2.53 MB | 9 | Healthy |
 | `redis` | 0.57% | 7.20 MiB | 60 MiB | 12.01% | 75.6 kB / 48.5 kB | 3.07 MB / 0 B | 6 | Healthy |
-| **Tổng cộng (lúc 100 conns)** | - | **155.65 MiB** | **460 MiB** | - | - | - | 104 | - |
+| **Tổng cộng (lúc 100 conns)** | - | **151.05 MiB** | **460 MiB** | - | - | - | 99 | - |
+
+> **Phép tính tổng cộng (trạng thái 100 kết nối, không cộng dồn dòng idle):**  
+> - RAM: $8.28 + 7.95 + 16.71 + 21.62 + 16.45 + 3.54 + 16.77 + 52.53 + 7.20 = 151.05\text{ MiB}$  
+> - PIDs: $12 + 9 + 11 + 13 + 17 + 8 + 14 + 9 + 6 = 99\text{ PIDs}$  
+> - % Ngân sách VPS: $151.05 / 850 \approx 17.77\%$
 
 ### Đánh giá & Khuyến nghị giới hạn tài nguyên
 
 - **Đánh giá `mem_limit` hiện tại (30 MB):** 
   - Lúc 0 kết nối (idle): `ws-gateway` tiêu thụ ~4.60 MiB RAM (~15.3% định mức 30 MB).
-  - Lúc 100 kết nối đồng thời: `ws-gateway` tiêu thụ ~8.28 MiB RAM (~27.6% định mức 30 MB), cách rất xa ngưỡng cảnh báo 24 MiB (chỉ bằng 34.5% ngưỡng cảnh báo).
-  - Định mức `mem_limit: 30m` và `GOMEMLIMIT: 26MiB` hoàn toàn đủ và tối ưu cho VPS 1 GB.
+  - Lúc 100 kết nối đồng thời: `ws-gateway` tiêu thụ ~8.28 MiB RAM (~27.6% định mức 30 MB), dưới ngưỡng cảnh báo 24 MiB (34.5% ngưỡng cảnh báo).
+  - Định mức `mem_limit: 30m` và `GOMEMLIMIT: 26MiB` cho VPS 1 GB.
 - **Đo kiểm độ trễ chuyển tiếp GPS tài xế -> khách hàng (DRIVER_LOCATION_UPDATED):**
   - Số lượng mẫu: 35 lần gửi liên tục (1 frame / 200 ms).
   - $p50 = 1.96\text{ ms}$
   - $p95 = 2.98\text{ ms}$
   - $\max = 3.52\text{ ms}$
-  - Đánh giá: Độ trễ thực tế cực thấp (chỉ ~2-3 ms), vượt trội so với tiêu chí yêu cầu của đề bài ($p95 < 500\text{ ms}$).
-- **Xác minh khả năng chịu lỗi (Resilience & Auto-Resubscribe):**
+  - Ghi chú: 1 tài xế, loopback, 35 mẫu; kịch bản 100 tài xế đo ở Lượt 10.
+- **Khả năng chịu lỗi (Resilience & Auto-Resubscribe):**
   - Khi `location-service` tạm dừng: `ws-gateway` ghi log `ERROR` nhưng không làm đứt kết nối WebSocket của tài xế và vẫn tra cứu `trip:link:<driver_id>` để chuyển tiếp vị trí cho khách hàng bình thường.
-  - Khi `redis` tạm dừng: handshake mới fail-closed trả HTTP 503 ngay lập tức; khi `redis` chạy lại, thư viện `go-redis` tự động kết nối và tái đăng ký (auto-resubscribe) các kênh `ride:trip_offers`, `ride:trip_updates`, `ride:ws_control`, các kết nối WebSocket cũ vẫn nhận được cuốc mới mà không cần kết nối lại.
-- **Ngân sách RAM toàn hệ thống:** 155.65 MiB / 850 MiB (~18.3% ngân sách tối đa của VPS 1 GB).
+  - Khi `redis` tạm dừng: handshake mới fail-closed trả HTTP 503; khi `redis` chạy lại, thư viện `go-redis` tự động kết nối và tái đăng ký (auto-resubscribe) các kênh `ride:trip_offers`, `ride:trip_updates`, `ride:ws_control`, các kết nối WebSocket cũ vẫn nhận được cuốc mới mà không cần kết nối lại.
+- **Ngân sách RAM toàn hệ thống:** 151.05 MiB / 850 MiB (~17.8% ngân sách tối đa của VPS 1 GB).
 
 ---
 
