@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"strconv"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 
@@ -57,8 +59,17 @@ func (ctrl *WalletController) GetTransactions(c *fiber.Ctx) error {
 		return exception.NewUnauthorizedError("Yêu cầu xác thực tài khoản")
 	}
 
-	page := c.QueryInt("page", 1)
-	limit := c.QueryInt("limit", 20)
+	pageStr := c.Query("page", "1")
+	page, err := strconv.Atoi(pageStr)
+	if err != nil {
+		return exception.NewValidationError("page phải là số nguyên")
+	}
+
+	limitStr := c.Query("limit", "20")
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil {
+		return exception.NewValidationError("limit phải là số nguyên")
+	}
 
 	res, appErr := ctrl.walletService.GetTransactions(c.Context(), userID, page, limit)
 	if appErr != nil {

@@ -8,12 +8,12 @@
 
 ## 1. TỔNG QUAN
 
-Bộ kịch bản kiểm thử bao gồm **18 ca kiểm thử HTTP** (chạy tự động qua Postman) và **4 ca kiểm thử bất đồng bộ/sự kiện/PEL** (chạy tay qua `redis-cli` và `psql`):
+Bộ kịch bản kiểm thử bao gồm **20 ca kiểm thử HTTP** (chạy tự động qua Postman) và **4 ca kiểm thử bất đồng bộ/sự kiện/PEL** (chạy tay qua `redis-cli` và `psql`):
 1. **Kiểm tra sức khỏe:** Endpoint `GET /health` (`W-00`).
 2. **Nạp tiền & Xem số dư:** Khách hàng C1 nạp tiền (`W-01`), xem ví cá nhân (`W-02`), xem lịch sử giao dịch (`W-03`).
 3. **Kiểm tra số dư nội bộ (dispatch-service):** Kiểm tra khi đủ tiền (`W-04a`) và khi không đủ tiền (`W-04b`).
 4. **Kiểm soát truy cập (RBAC):** Chặn Quản trị viên (Admin) gọi API ví cá nhân (`W-05a`, `W-05b`, `W-05c`).
-5. **Kiểm tra ràng buộc dữ liệu (Validation):** Nạp tiền sai số tiền, kiểm tra số dư sai input, phân trang không hợp lệ (`W-06a`..`W-06g`).
+5. **Kiểm tra ràng buộc dữ liệu (Validation):** Nạp tiền sai số tiền, kiểm tra số dư sai input, phân trang không hợp lệ (`W-06a`..`W-06i`).
 6. **Xác thực Header:** Bắt lỗi thiếu header, UUID sai định dạng, role không hợp lệ (`W-07a`..`W-07c`).
 7. **Thanh toán tự động TripCompleted:** Trừ ví khách, cộng ví tài xế, trích hoa hồng, bảo toàn dòng tiền (`W-08`).
 8. **Chống lặp thanh toán (Idempotency):** Replay cùng sự kiện TripCompleted không ghi trùng giao dịch (`W-09`).
@@ -42,6 +42,8 @@ Bộ kịch bản kiểm thử bao gồm **18 ca kiểm thử HTTP** (chạy t�
 | **W-06e**| Check-balance với `user_id` không phải UUID | `POST /internal/v1/wallets/check-balance` | `Content-Type: application/json` | `{"user_id": "not-a-uuid", "required_amount": 50000}` | **400 Bad Request**<br>`VALIDATION_ERROR` | Chạy bằng Postman. Bắt lỗi cú pháp UUID. |
 | **W-06f**| Phân trang transactions với `page < 1` | `GET /api/v1/wallets/transactions?page=0&limit=20` | `X-User-Id: {{c1_id}}`<br>`X-User-Role: CUSTOMER` | *(None)* | **400 Bad Request**<br>`VALIDATION_ERROR` | Chạy bằng Postman. Bắt lỗi: *"page phải lớn hơn hoặc bằng 1"*. |
 | **W-06g**| Phân trang transactions với `limit > 100` | `GET /api/v1/wallets/transactions?page=1&limit=101` | `X-User-Id: {{c1_id}}`<br>`X-User-Role: CUSTOMER` | *(None)* | **400 Bad Request**<br>`VALIDATION_ERROR` | Chạy bằng Postman. Bắt lỗi: *"limit phải nằm trong khoảng [1, 100]"*. |
+| **W-06h**| Phân trang transactions với `page = abc` (không phải số) | `GET /api/v1/wallets/transactions?page=abc` | `X-User-Id: {{c1_id}}`<br>`X-User-Role: CUSTOMER` | *(None)* | **400 Bad Request**<br>`VALIDATION_ERROR` | Chạy bằng Postman. Bắt lỗi: *"page phải là số nguyên"*. |
+| **W-06i**| Phân trang transactions với `limit = abc` (không phải số) | `GET /api/v1/wallets/transactions?limit=abc` | `X-User-Id: {{c1_id}}`<br>`X-User-Role: CUSTOMER` | *(None)* | **400 Bad Request**<br>`VALIDATION_ERROR` | Chạy bằng Postman. Bắt lỗi: *"limit phải là số nguyên"*. |
 | **W-07a**| Gọi API ví thiếu header xác thực | `GET /api/v1/wallets/me` | *(None)* | *(None)* | **401 Unauthorized**<br>`UNAUTHORIZED` | Chạy bằng Postman. Thiếu `X-User-Id` / `X-User-Role`. |
 | **W-07b**| Gọi API ví với `X-User-Id` sai định dạng | `GET /api/v1/wallets/me` | `X-User-Id: invalid-uuid`<br>`X-User-Role: CUSTOMER` | *(None)* | **401 Unauthorized**<br>`UNAUTHORIZED` | Chạy bằng Postman. Quy ước bổ sung: UUID sai $\rightarrow$ 401. |
 | **W-07c**| Gọi API ví với `X-User-Role` không hợp lệ | `GET /api/v1/wallets/me` | `X-User-Id: {{c1_id}}`<br>`X-User-Role: HACKER` | *(None)* | **401 Unauthorized**<br>`UNAUTHORIZED` | Chạy bằng Postman. Role không thuộc tập hợp cho phép. |

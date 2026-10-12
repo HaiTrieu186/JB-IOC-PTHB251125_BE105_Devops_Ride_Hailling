@@ -4919,6 +4919,112 @@
           ]
         },
         {
+          "name": "W-06h: Transactions Page Not Integer",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{c1_id}}",
+                "type": "text"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "CUSTOMER",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{payment_url}}/api/v1/wallets/transactions?page=abc",
+              "host": [
+                "{{payment_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wallets",
+                "transactions"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "abc"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code check\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Error code VALIDATION_ERROR\", function () {",
+                  "    pm.expect(res.error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "W-06i: Transactions Limit Not Integer",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{c1_id}}",
+                "type": "text"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "CUSTOMER",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{payment_url}}/api/v1/wallets/transactions?limit=abc",
+              "host": [
+                "{{payment_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wallets",
+                "transactions"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "abc"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code check\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Error code VALIDATION_ERROR\", function () {",
+                  "    pm.expect(res.error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "W-07a: Get Wallet Missing Auth Headers",
           "request": {
             "method": "GET",

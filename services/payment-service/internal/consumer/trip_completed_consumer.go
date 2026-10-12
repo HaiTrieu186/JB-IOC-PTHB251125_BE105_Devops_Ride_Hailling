@@ -151,6 +151,10 @@ func (c *TripCompletedConsumer) processNewMessages(ctx context.Context) {
 	if err != nil {
 		if err != redis.Nil && ctx.Err() == nil {
 			slog.Error("error reading new messages from stream", "error", err)
+			select {
+			case <-ctx.Done():
+			case <-time.After(1 * time.Second):
+			}
 		}
 		return
 	}
