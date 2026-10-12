@@ -1,6 +1,6 @@
 # SỐ LIỆU ĐO KIỂM THỰC TẾ (BENCHMARK & RESOURCE USAGE)
 
-> **Mã tài liệu:** `DEP-01` | **Phiên bản:** `1.2` | **Cập nhật:** 11/10/2026
+> **Mã tài liệu:** `DEP-01` | **Phiên bản:** `1.3` | **Cập nhật:** 11/10/2026
 
 ---
 
@@ -89,12 +89,39 @@
 
 ---
 
-## 5. Nhật ký gỡ lỗi (Debugging Log)
+## 5. Triển khai `payment-service` (Lượt 6)
+
+Đo kiểm sau khi chạy toàn bộ chuỗi kiểm thử nghiệp vụ (Top-up ví khách C1 200.000 VND, Get balance/transactions, Check-balance C1/C3, XADD TripCompleted phân chia cước 50.000 VND, kiểm tra Idempotency chống trừ trùng, xử lý thiếu tiền FAILED trên C3, bảo mật RBAC chặn ADMIN 403, khôi phục tồn đọng PEL sau khi phục hồi DB PostgreSQL).  
+*Ghi chú môi trường:* Số đo thực tế dưới đây được lấy từ Docker Desktop trên máy dev nội bộ sau khi hoàn thành 2 lượt chạy test suite Postman (39/39 assertions PASS).
+
+### Kết quả `docker stats --no-stream`
+
+| Container | CPU % | RAM Hiện tại (MEM USAGE) | Giới hạn (LIMIT) | Tỷ lệ RAM (MEM %) | NET I/O | BLOCK I/O | PIDs | Trạng thái |
+|---|---|---|---|---|---|---|---|---|
+| `payment-service` | 0.04% | 7.28 MiB | 30 MiB | 24.27% | 106 kB / 130 kB | 8.19 kB / 0 B | 11 | Healthy |
+| `pricing-service` | 1.87% | 8.69 MiB | 30 MiB | 28.96% | 622 kB / 847 kB | 4.10 kB / 0 B | 12 | Healthy |
+| `location-service` | 1.88% | 8.22 MiB | 25 MiB | 32.89% | 71.8 kB / 77.4 kB | 3.37 MB / 0 B | 13 | Healthy |
+| `user-service` | 1.97% | 18.65 MiB | 30 MiB | 62.16% | 132 kB / 124 kB | 273 MB / 5.96 MB | 15 | Healthy |
+| `postgres` | 0.00% | 19.23 MiB | 200 MiB | 9.62% | 14.1 kB / 11.4 kB | 9.88 MB / 782 kB | 7 | Healthy |
+| `redis` | 2.42% | 16.12 MiB | 60 MiB | 26.88% | 1.52 MB / 1.06 MB | 34.9 MB / 418 kB | 6 | Healthy |
+| **Tổng cộng** | - | **78.19 MiB** | **375 MiB** | - | - | - | 64 | - |
+
+### Đánh giá & Khuyến nghị giới hạn tài nguyên
+
+- **Đánh giá `mem_limit` hiện tại (30 MB):** `payment-service` tiêu thụ ~7.28 MiB RAM (~24.3% định mức 30 MB), mức sử dụng rất thấp và ổn định dù có chạy ngầm consumer lắng nghe Redis Streams và thực hiện các transaction khóa dòng database PostgreSQL. Mức `mem_limit: 30m` và `GOMEMLIMIT: 26MiB` hoàn toàn an toàn và tối ưu cho VPS 1 GB.
+- **Xử lý tránh Deadlock khi khóa 2 ví đồng thời:** Luồng quyết toán `TripCompleted` khóa cả ví khách và ví tài xế bằng `SELECT ... FOR UPDATE`. Để tránh hiện tượng Deadlock khi có 2 chuyến đi giữa 2 người dùng diễn ra đồng thời theo chiều ngược lại, hệ thống luôn sắp xếp khóa ví theo thứ tự UUID tăng dần (`firstID < secondID`). Thao tác này loại trừ triệt để nguy cơ Circular Wait ở tầng cơ sở dữ liệu.
+- **Đo kiểm phục hồi PEL (Consumer Group `payment-group`):** Khi PostgreSQL tạm dừng, tin nhắn `TripCompleted` không thể ghi nhận và nằm lại trong PEL với `XPENDING = 1`. Ngay khi PostgreSQL hoạt động trở lại, background worker quét lại PEL định kỳ 3 giây, hoàn tất ghi 3 dòng sổ quyết toán thành công và tự động gọi `XACK`, đưa `XPENDING` về 0 mà không làm thất thoát giao dịch.
+- **Ngân sách RAM toàn hệ thống:** 78.19 MiB / 850 MiB (~9.2% ngân sách tối đa của VPS 1 GB).
+
+---
+
+## 6. Nhật ký gỡ lỗi (Debugging Log)
 
 - **Lỗi escape ký tự JSON trong PowerShell khi gọi `curlimages/curl`:** Khi chạy câu lệnh PowerShell với cờ `-d '{...}'`, PowerShell tự động bóc tách dấu nháy kép khiến parser JSON của Go nhận payload bị lỗi cú pháp `VALIDATION_ERROR`.  
-  *Cách khắc phục:* Chuyển sang kỹ thuật truyền dữ liệu qua stdin (`<json> | docker run -i ... curlimages/curl --data-binary "@-"`) giúp payload JSON được bảo toàn nguyên vẹn 100%. (Lưu ý cờ `@-` phải đặt trong dấu nháy kép `"@-"` trên PowerShell để không bị lỗi token).
+  *Cách khắc phục:* Chuyển sang kỹ thuật truyền dữ liệu qua stdin (`<json> | docker run -i ... curlimages/curl --data-binary "@-"`) hoặc dùng test runner tự động giúp payload JSON được bảo toàn nguyên vẹn 100%. (Lưu ý cờ `@-` phải đặt trong dấu nháy kép `"@-"` trên PowerShell để không bị lỗi token).
 - **Lỗi tràn dung lượng ổ đĩa C trong quá trình Docker build (`There is not enough space on the disk`):** Ổ C máy host cạn kiệt dung lượng (chỉ còn ~100 MB free) khiến tiến trình biên dịch Go/BuildKit thất bại và ngắt kết nối daemon WSL2 (`unexpected EOF`).  
   *Cách khắc phục:* Chuyển `GOTMPDIR` và `GOCACHE` sang ổ D (`D:\tmp_go`, `D:\tmp_gocache`), giải phóng cache build giúp biên dịch ổn định.
 - **Lỗi xung đột multiple default values trên cột `id` bảng `pricing_configs` trong GORM PostgreSQL:** Khi khai báo `ID int `gorm:"primaryKey;default:1"``, GORM tự động tạo sequence auto-increment và gán default là `nextval(...)`, đồng thời tag `default:1` lại gán thêm 1 default nữa, gây lỗi `ERROR: multiple default values specified for column "id" of table "pricing_configs" (SQLSTATE 42601)`.  
   *Cách khắc phục:* Khai báo tường minh `gorm:"primaryKey;type:integer;default:1;autoIncrement:false"` giúp GORM tạo đúng DDL `id integer PRIMARY KEY DEFAULT 1` mà không thêm sequence ngầm định.
+- **Xử lý số lần giao lại trong Redis Stream PEL (`payment-service` & `pricing-service`):** Lệnh `XREADGROUP ... 0` đọc lại tin nhắn từ PEL không tự động tăng `DeliveredTimes` trên Redis. Do đó, consumer sử dụng `map[string]int` có mutex lock để tự theo dõi: lần đầu thấy tin trong PEL tính là lần giao thứ 2. Nếu vượt quá `MAX_DELIVERY_ATTEMPTS` (5 lần), hệ thống ghi log `ERROR` và `XACK` giải phóng tin nhắn để không tắc nghẽn đường ống.
 

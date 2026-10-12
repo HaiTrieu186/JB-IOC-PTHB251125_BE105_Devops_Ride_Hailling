@@ -36,7 +36,9 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
   - Chạy folder `01 user-service` để kiểm thử toàn diện 15 kịch bản U-01..U-15.
   - Đã có folder `02 location-service` (các ca L-01..L-06e chạy bằng Postman, L-07 chạy tay).
   - Đã có folder `03 pricing-service` (P-00..P-06d, P-06f, teardown chạy bằng Postman; P-06e, P-07, P-08 chạy tay).
-  - Các service tiếp theo (`payment`, `dispatch`) sẽ được bổ sung vào collection theo từng lượt triển khai.
+  - Đã có folder `04 payment-service` (các ca W-00..W-07c chạy bằng Postman; W-08..W-11 chạy tay).
+  - Service tiếp theo (`dispatch`) sẽ được bổ sung vào collection theo từng lượt triển khai.
+
 
 ---
 

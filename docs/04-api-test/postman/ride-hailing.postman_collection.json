@@ -4027,6 +4027,1028 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "04 payment-service",
+      "item": [
+        {
+          "name": "W-00: Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{payment_url}}/health",
+              "host": [
+                "{{payment_url}}"
+              ],
+              "path": [
+                "health"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code check\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Success is true\", function () {",
+                  "    pm.expect(res.success).to.be.true;",
+                  "});",
+                  "pm.test(\"Status is ok\", function () {",
+                  "    pm.expect(res.data.status).to.eql(\"ok\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "W-01: Top-up Wallet C1",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{c1_id}}",
+                "type": "text"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "CUSTOMER",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{payment_url}}/api/v1/wallets/top-up",
+              "host": [
+                "{{payment_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wallets",
+                "top-up"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"amount\": 50000}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const paymentUrl = pm.variables.get(\"payment_url\") || \"http://127.0.0.1:8005\";",
+                  "const c1Id = pm.variables.get(\"c1_id\");",
+                  "pm.sendRequest({",
+                  "    url: paymentUrl + \"/api/v1/wallets/me\",",
+                  "    method: \"GET\",",
+                  "    header: {",
+                  "        \"X-User-Id\": c1Id,",
+                  "        \"X-User-Role\": \"CUSTOMER\"",
+                  "    }",
+                  "}, function (err, res) {",
+                  "    if (!err && res.code === 200) {",
+                  "        pm.collectionVariables.set(\"c1_old_balance\", res.json().data.balance);",
+                  "    } else {",
+                  "        pm.collectionVariables.set(\"c1_old_balance\", 0);",
+                  "    }",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code check\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Success is true\", function () {",
+                  "    pm.expect(res.success).to.be.true;",
+                  "});",
+                  "pm.test(\"Added amount is 50000\", function () {",
+                  "    pm.expect(res.data.added_amount).to.eql(50000);",
+                  "});",
+                  "pm.test(\"Balance incremented by 50000\", function () {",
+                  "    var oldBal = Number(pm.collectionVariables.get(\"c1_old_balance\") || 0);",
+                  "    pm.expect(res.data.new_balance - oldBal).to.eql(50000);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "W-02: Get Wallet Me C1",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{c1_id}}",
+                "type": "text"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "CUSTOMER",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{payment_url}}/api/v1/wallets/me",
+              "host": [
+                "{{payment_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wallets",
+                "me"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code check\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Success is true\", function () {",
+                  "    pm.expect(res.success).to.be.true;",
+                  "});",
+                  "pm.test(\"Wallet info valid\", function () {",
+                  "    pm.expect(res.data.balance).to.be.at.least(0);",
+                  "    pm.expect(res.data.currency).to.eql(\"VND\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "W-03: Get Transactions C1",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{c1_id}}",
+                "type": "text"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "CUSTOMER",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{payment_url}}/api/v1/wallets/transactions?page=1&limit=20",
+              "host": [
+                "{{payment_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wallets",
+                "transactions"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code check\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Success is true\", function () {",
+                  "    pm.expect(res.success).to.be.true;",
+                  "});",
+                  "pm.test(\"No COMMISSION in user transactions\", function () {",
+                  "    var txs = res.data.transactions || [];",
+                  "    var hasCommission = txs.some(function(t) { return t.type === \"COMMISSION\"; });",
+                  "    pm.expect(hasCommission).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "W-04a: Internal Check-balance C1 (Sufficient)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{payment_url}}/internal/v1/wallets/check-balance",
+              "host": [
+                "{{payment_url}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "wallets",
+                "check-balance"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"user_id\": \"{{c1_id}}\", \"required_amount\": 50000}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code check\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Sufficient is true\", function () {",
+                  "    pm.expect(res.data.sufficient).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "W-04b: Internal Check-balance C3 (Insufficient)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{payment_url}}/internal/v1/wallets/check-balance",
+              "host": [
+                "{{payment_url}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "wallets",
+                "check-balance"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"user_id\": \"{{c3_id}}\", \"required_amount\": 50000}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code check\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Sufficient is false\", function () {",
+                  "    pm.expect(res.data.sufficient).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "W-05a: Admin Get Wallet Me (Forbidden)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{admin_id}}",
+                "type": "text"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "ADMIN",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{payment_url}}/api/v1/wallets/me",
+              "host": [
+                "{{payment_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wallets",
+                "me"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code check\", function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Error code FORBIDDEN\", function () {",
+                  "    pm.expect(res.error.code).to.eql(\"FORBIDDEN\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "W-05b: Admin Top-up (Forbidden)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{admin_id}}",
+                "type": "text"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "ADMIN",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{payment_url}}/api/v1/wallets/top-up",
+              "host": [
+                "{{payment_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wallets",
+                "top-up"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"amount\": 100000}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code check\", function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Error code FORBIDDEN\", function () {",
+                  "    pm.expect(res.error.code).to.eql(\"FORBIDDEN\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "W-05c: Admin Get Transactions (Forbidden)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{admin_id}}",
+                "type": "text"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "ADMIN",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{payment_url}}/api/v1/wallets/transactions",
+              "host": [
+                "{{payment_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wallets",
+                "transactions"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code check\", function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Error code FORBIDDEN\", function () {",
+                  "    pm.expect(res.error.code).to.eql(\"FORBIDDEN\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "W-06a: Top-up Zero Amount",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{c1_id}}",
+                "type": "text"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "CUSTOMER",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{payment_url}}/api/v1/wallets/top-up",
+              "host": [
+                "{{payment_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wallets",
+                "top-up"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"amount\": 0}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code check\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Error code VALIDATION_ERROR\", function () {",
+                  "    pm.expect(res.error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "W-06b: Top-up Over Limit Amount",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{c1_id}}",
+                "type": "text"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "CUSTOMER",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{payment_url}}/api/v1/wallets/top-up",
+              "host": [
+                "{{payment_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wallets",
+                "top-up"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"amount\": 100000001}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code check\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Error code VALIDATION_ERROR\", function () {",
+                  "    pm.expect(res.error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "W-06c: Check-balance Missing Required Amount",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{payment_url}}/internal/v1/wallets/check-balance",
+              "host": [
+                "{{payment_url}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "wallets",
+                "check-balance"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"user_id\": \"{{c1_id}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code check\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Error code VALIDATION_ERROR\", function () {",
+                  "    pm.expect(res.error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "W-06d: Check-balance Negative Required Amount",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{payment_url}}/internal/v1/wallets/check-balance",
+              "host": [
+                "{{payment_url}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "wallets",
+                "check-balance"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"user_id\": \"{{c1_id}}\", \"required_amount\": -1000}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code check\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Error code VALIDATION_ERROR\", function () {",
+                  "    pm.expect(res.error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "W-06e: Check-balance Invalid User UUID",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{payment_url}}/internal/v1/wallets/check-balance",
+              "host": [
+                "{{payment_url}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "wallets",
+                "check-balance"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"user_id\": \"not-a-uuid\", \"required_amount\": 50000}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code check\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Error code VALIDATION_ERROR\", function () {",
+                  "    pm.expect(res.error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "W-06f: Transactions Page Zero",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{c1_id}}",
+                "type": "text"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "CUSTOMER",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{payment_url}}/api/v1/wallets/transactions?page=0&limit=20",
+              "host": [
+                "{{payment_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wallets",
+                "transactions"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code check\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Error code VALIDATION_ERROR\", function () {",
+                  "    pm.expect(res.error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "W-06g: Transactions Limit Over 100",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{c1_id}}",
+                "type": "text"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "CUSTOMER",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{payment_url}}/api/v1/wallets/transactions?page=1&limit=101",
+              "host": [
+                "{{payment_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wallets",
+                "transactions"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "101"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code check\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Error code VALIDATION_ERROR\", function () {",
+                  "    pm.expect(res.error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "W-07a: Get Wallet Missing Auth Headers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{payment_url}}/api/v1/wallets/me",
+              "host": [
+                "{{payment_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wallets",
+                "me"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code check\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Error code UNAUTHORIZED\", function () {",
+                  "    pm.expect(res.error.code).to.eql(\"UNAUTHORIZED\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "W-07b: Get Wallet Invalid UUID Header",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "invalid-uuid",
+                "type": "text"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "CUSTOMER",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{payment_url}}/api/v1/wallets/me",
+              "host": [
+                "{{payment_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wallets",
+                "me"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code check\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Error code UNAUTHORIZED\", function () {",
+                  "    pm.expect(res.error.code).to.eql(\"UNAUTHORIZED\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "W-07c: Get Wallet Invalid Role Header",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{c1_id}}",
+                "type": "text"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "HACKER",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{payment_url}}/api/v1/wallets/me",
+              "host": [
+                "{{payment_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wallets",
+                "me"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code check\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Error code UNAUTHORIZED\", function () {",
+                  "    pm.expect(res.error.code).to.eql(\"UNAUTHORIZED\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
     }
   ]
 }
