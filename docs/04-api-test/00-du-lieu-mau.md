@@ -59,7 +59,7 @@ Mật khẩu đăng nhập chung: `Test@1234`.
 
 Để tránh xung đột dữ liệu với 5 tài xế mẫu D1–D5:
 - Dải số điện thoại `0903xxxxxx` (100 tài xế ảo tải trọng).
-- Dải số điện thoại `0904xxxxxx` (Dự phòng mở rộng).
+- Dải số điện thoại `0904xxxxxx` (Dành cho khách hàng ảo trong script giả lập tải / chế độ chuyến).
 - **Quy tắc:** Tuyệt đối không dùng 2 dải số này trong các kịch bản kiểm thử API thủ công / Postman.
 
 ---

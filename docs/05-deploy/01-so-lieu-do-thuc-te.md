@@ -218,7 +218,47 @@
 
 ---
 
-## 9. Nhật ký gỡ lỗi (Debugging Log)
+## 9. Mô phỏng tải 100 Tài xế ảo & Chế độ Chuyến xe (Lượt 10)
+
+Đo kiểm khi chạy script giả lập `scripts/sim-drivers/sim.py` với 100 tài xế ảo gửi GPS định kỳ 3–5 giây lên `ws-gateway` trong thời gian 300 giây.  
+*Ghi chú môi trường:* Toàn bộ số đo dưới đây là số liệu thực tế đo trên máy local dev (Docker Desktop); số liệu trên máy chủ VPS production 1 GB RAM sẽ được đo và bổ sung sau khi deploy.
+
+### 9.1. Kiểm tra Redis GEO (`ZCARD drivers:geo`)
+- Lệnh: `redis-cli -a redis_secret_pass ZCARD drivers:geo`
+- Kết quả: **100** tài xế có vị trí hợp lệ trong sorted set GEO của Redis.
+
+### 9.2. Kết quả `docker stats --no-stream` (Giữa chừng lúc 100 tài xế đang stream GPS)
+
+| Container | CPU % | RAM Hiện tại (MEM USAGE) | Giới hạn (LIMIT) | Tỷ lệ RAM (MEM %) | NET I/O | BLOCK I/O | PIDs | Trạng thái |
+|---|---|---|---|---|---|---|---|---|
+| `api-gateway` | 0.05% | 8.31 MiB | 25 MiB | 33.25% | 544 kB / 563 kB | 14.8 MB / 0 B | 15 | Healthy |
+| `ws-gateway` | 2.03% | 22.94 MiB | 30 MiB | 76.46% | 616 kB / 857 kB | 18.4 MB / 0 B | 18 | Healthy |
+| `pricing-service` | 5.49% | 16.25 MiB | 30 MiB | 54.18% | 487 kB / 694 kB | 88.2 MB / 680 kB | 17 | Healthy |
+| `dispatch-service` | 0.08% | 15.84 MiB | 30 MiB | 52.79% | 402 kB / 713 kB | 635 MB / 35.6 MB | 17 | Healthy |
+| `payment-service` | 2.44% | 17.74 MiB | 30 MiB | 59.13% | 425 kB / 630 kB | 94.3 MB / 1.1 MB | 14 | Healthy |
+| `location-service` | 1.48% | 18.06 MiB | 25 MiB | 72.25% | 527 kB / 627 kB | 17.7 MB / 0 B | 17 | Healthy |
+| `user-service` | 0.02% | 15.86 MiB | 30 MiB | 52.85% | 399 kB / 487 kB | 1.2 GB / 90.1 MB | 17 | Healthy |
+| `postgres` | 0.04% | 61.52 MiB | 200 MiB | 30.76% | 917 kB / 548 kB | 51.6 MB / 4.36 MB | 14 | Healthy |
+| `redis` | 1.06% | 11.84 MiB | 60 MiB | 19.73% | 2.14 MB / 1.24 MB | 31.6 MB / 721 kB | 6 | Healthy |
+| **Tổng cộng** | - | **188.36 MiB** | **460 MiB** | - | - | - | 135 | - |
+
+> **Đánh giá ngân sách RAM:**
+> - Tổng RAM tiêu thụ: **188.36 MiB** / mục tiêu $\le 850\text{ MiB}$ (~22.16% ngân sách RAM của VPS 1 GB).
+> - Tất cả 9 service đều duy trì mức sử dụng dưới ngưỡng `mem_limit` được cấu hình.
+> - `ws-gateway` chịu tải 100 kết nối WebSocket gửi frame mỗi 3-5s tiêu thụ ~22.94 MiB (dưới hạn mức 30 MiB).
+
+### 9.3. Đo kiểm Độ trễ chuyển tiếp GPS (`DRIVER_LOCATION_UPDATED`)
+- **Môi trường thực hiện:** Chạy trên máy local dev (tiến trình sim, api-gateway, ws-gateway, Redis chạy chung trên cùng một máy host nên gần như không có độ trễ mạng). Số đo thực tế qua Internet trên VPS sẽ được bổ sung sau khi deploy.
+- **Phương pháp đo:** Dùng `time.perf_counter()` ghi nhận mốc thời gian lúc tài xế phát frame và lúc khách hàng nhận frame qua WebSocket (khớp theo bộ khóa `(driver_id, latitude, longitude)`).
+- **Kết quả đo:**
+  - Số mẫu ghi nhận: **47 mẫu**
+  - $p50$: **1.85 ms**
+  - $p95$: **2.65 ms**
+  - $\max$: **2.95 ms**
+
+---
+
+## 10. Nhật ký gỡ lỗi (Debugging Log)
 
 - **Lỗi DNS lookup timeout kéo dài 53 giây khi dừng container Redis trong lúc kiểm tra handshake (`ws-gateway`):** Khi `redis` bị `docker stop`, hàm `rdb.Get` mặc định không có context timeout độc lập nên thư viện `go-redis` thực hiện retry dial nhiều lần đến DNS nội bộ Docker (`lookup redis on 127.0.0.11:53: no such host`), khiến handshake bị block tới ~53 giây mới trả về lỗi 503.  
   *Cách khắc phục:* Bổ sung `context.WithTimeout(ctx, 1*time.Second)` vào `RedisBlacklistRepository.IsBlacklisted`. Khi Redis dừng hoặc mất kết nối, hàm lập tức hết hạn sau 1 giây và trả về lỗi, giúp middleware fail-closed trả HTTP 503 nhanh chóng.
