@@ -38,7 +38,8 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
   - Đã có folder `03 pricing-service` (P-00..P-06d, P-06f, teardown chạy bằng Postman; P-06e, P-07, P-08 chạy tay).
   - Đã có folder `04 payment-service` (các ca W-00..W-07c chạy bằng Postman; W-08..W-11 chạy tay).
   - Đã có folder `05 dispatch-service` (gồm 4 request chuẩn bị + 16 ca DP-00..DP-01f, DP-03, DP-05, DP-08a, DP-08c, DP-10, DP-11, DP-12a, DP-14a, DP-15 chạy bằng Postman; 17 ca còn lại chạy tay bằng script PowerShell).
-  - Các service tiếp theo (`api-gateway`, `ws-gateway`) sẽ được bổ sung vào collection theo từng lượt triển khai.
+  - Đã có folder `06 api-gateway` (các ca GW-01..GW-15 chạy bằng Postman, GW-16..GW-24 chạy tay).
+  - Đã có tài liệu `07-ws-gateway.md` (các ca WS-01..WS-16 kiểm thử WebSocket, handshake, stream tọa độ, đo độ trễ và khả năng chịu lỗi).
 
 
 ---

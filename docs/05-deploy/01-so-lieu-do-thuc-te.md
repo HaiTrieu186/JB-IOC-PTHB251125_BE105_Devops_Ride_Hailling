@@ -173,8 +173,52 @@
 
 ---
 
-## 8. Nhật ký gỡ lỗi (Debugging Log)
+## 8. Triển khai `ws-gateway` (Lượt 9)
 
+Đo kiểm sau khi chạy toàn bộ chuỗi 13 kịch bản kiểm thử (từ chối 8 ca handshake sai mã lỗi, luồng E2E đẩy GPS và chuyển tiếp vị trí tài xế cho khách, đo độ trễ p50/p95 tài xế->khách, ngắt kết nối WebSocket khi đăng xuất qua Redis Pub/Sub `ride:ws_control`, quá tải MAX_CONNECTIONS=2 trả 503, heartbeat Ping/Pong quá hạn 5s đóng 1001, lọc frame rác và đóng 1009 khi frame > 4096B, duy trì kết nối khi token hết hạn nhưng không kiểm lại exp sau handshake, bỏ qua GPS từ role khách, failover khi location-service dừng và phục hồi, failover khi Redis dừng trả 503 và tự động nối lại/resubscribe khi Redis bật lại, đo RAM lúc 0 và 100 kết nối).  
+*Ghi chú môi trường:* Số đo thực tế dưới đây được lấy từ Docker Desktop trên máy dev nội bộ sau khi hoàn thành chuỗi kiểm thử tự động.
+
+### Kết quả `docker stats --no-stream`
+
+| Container | CPU % | RAM Hiện tại (MEM USAGE) | Giới hạn (LIMIT) | Tỷ lệ RAM (MEM %) | NET I/O | BLOCK I/O | PIDs | Trạng thái |
+|---|---|---|---|---|---|---|---|---|
+| `ws-gateway` (idle / 0 conns) | 0.11% | 4.60 MiB | 30 MiB | 15.34% | 15 kB / 17 kB | 0 B / 0 B | 8 | Healthy |
+| `ws-gateway` (100 conns active) | 0.02% | 8.28 MiB | 30 MiB | 27.59% | 102 kB / 68.6 kB | 0 B / 0 B | 12 | Healthy |
+| `api-gateway` | 2.11% | 7.95 MiB | 25 MiB | 31.81% | 78.8 kB / 72.3 kB | 14 MB / 0 B | 9 | Healthy |
+| `dispatch-service` | 2.67% | 16.71 MiB | 30 MiB | 55.69% | 275 kB / 519 kB | 559 MB / 20.6 MB | 11 | Healthy |
+| `payment-service` | 2.46% | 21.62 MiB | 30 MiB | 72.08% | 334 kB / 488 kB | 288 MB / 9.02 MB | 13 | Healthy |
+| `pricing-service` | 0.02% | 16.45 MiB | 30 MiB | 54.84% | 411 kB / 553 kB | 550 MB / 33.5 MB | 17 | Healthy |
+| `location-service` | 0.01% | 3.54 MiB | 25 MiB | 14.14% | 18.7 kB / 14 kB | 311 kB / 0 B | 8 | Healthy |
+| `user-service` | 2.02% | 16.77 MiB | 30 MiB | 55.90% | 79.2 kB / 76.1 kB | 269 MB / 7.23 MB | 14 | Healthy |
+| `postgres` | 2.68% | 52.53 MiB | 200 MiB | 26.27% | 584 kB / 307 kB | 50.5 MB / 2.53 MB | 9 | Healthy |
+| `redis` | 0.57% | 7.20 MiB | 60 MiB | 12.01% | 75.6 kB / 48.5 kB | 3.07 MB / 0 B | 6 | Healthy |
+| **Tổng cộng (lúc 100 conns)** | - | **155.65 MiB** | **460 MiB** | - | - | - | 104 | - |
+
+### Đánh giá & Khuyến nghị giới hạn tài nguyên
+
+- **Đánh giá `mem_limit` hiện tại (30 MB):** 
+  - Lúc 0 kết nối (idle): `ws-gateway` tiêu thụ ~4.60 MiB RAM (~15.3% định mức 30 MB).
+  - Lúc 100 kết nối đồng thời: `ws-gateway` tiêu thụ ~8.28 MiB RAM (~27.6% định mức 30 MB), cách rất xa ngưỡng cảnh báo 24 MiB (chỉ bằng 34.5% ngưỡng cảnh báo).
+  - Định mức `mem_limit: 30m` và `GOMEMLIMIT: 26MiB` hoàn toàn đủ và tối ưu cho VPS 1 GB.
+- **Đo kiểm độ trễ chuyển tiếp GPS tài xế -> khách hàng (DRIVER_LOCATION_UPDATED):**
+  - Số lượng mẫu: 35 lần gửi liên tục (1 frame / 200 ms).
+  - $p50 = 1.96\text{ ms}$
+  - $p95 = 2.98\text{ ms}$
+  - $\max = 3.52\text{ ms}$
+  - Đánh giá: Độ trễ thực tế cực thấp (chỉ ~2-3 ms), vượt trội so với tiêu chí yêu cầu của đề bài ($p95 < 500\text{ ms}$).
+- **Xác minh khả năng chịu lỗi (Resilience & Auto-Resubscribe):**
+  - Khi `location-service` tạm dừng: `ws-gateway` ghi log `ERROR` nhưng không làm đứt kết nối WebSocket của tài xế và vẫn tra cứu `trip:link:<driver_id>` để chuyển tiếp vị trí cho khách hàng bình thường.
+  - Khi `redis` tạm dừng: handshake mới fail-closed trả HTTP 503 ngay lập tức; khi `redis` chạy lại, thư viện `go-redis` tự động kết nối và tái đăng ký (auto-resubscribe) các kênh `ride:trip_offers`, `ride:trip_updates`, `ride:ws_control`, các kết nối WebSocket cũ vẫn nhận được cuốc mới mà không cần kết nối lại.
+- **Ngân sách RAM toàn hệ thống:** 155.65 MiB / 850 MiB (~18.3% ngân sách tối đa của VPS 1 GB).
+
+---
+
+## 9. Nhật ký gỡ lỗi (Debugging Log)
+
+- **Lỗi DNS lookup timeout kéo dài 53 giây khi dừng container Redis trong lúc kiểm tra handshake (`ws-gateway`):** Khi `redis` bị `docker stop`, hàm `rdb.Get` mặc định không có context timeout độc lập nên thư viện `go-redis` thực hiện retry dial nhiều lần đến DNS nội bộ Docker (`lookup redis on 127.0.0.11:53: no such host`), khiến handshake bị block tới ~53 giây mới trả về lỗi 503.  
+  *Cách khắc phục:* Bổ sung `context.WithTimeout(ctx, 1*time.Second)` vào `RedisBlacklistRepository.IsBlacklisted`. Khi Redis dừng hoặc mất kết nối, hàm lập tức hết hạn sau 1 giây và trả về lỗi, giúp middleware fail-closed trả HTTP 503 nhanh chóng.
+- **Lỗi mã hóa ký tự UTF-8 tiếng Việt trên console Python Windows (`charmap codec can't encode character`):** Terminal Windows mặc định dùng bảng mã cp1252/cp437 gây lỗi khi in log tiếng Việt có dấu từ script kiểm thử.  
+  *Cách khắc phục:* Thêm `sys.stdout.reconfigure(encoding='utf-8')` ở đầu các script Python trong thư mục scratch.
 - **Lỗi escape ký tự JSON trong PowerShell khi gọi `curlimages/curl`:** Khi chạy câu lệnh PowerShell với cờ `-d '{...}'`, PowerShell tự động bóc tách dấu nháy kép khiến parser JSON của Go nhận payload bị lỗi cú pháp `VALIDATION_ERROR`.  
   *Cách khắc phục:* Chuyển sang kỹ thuật truyền dữ liệu qua stdin (`<json> | docker run -i ... curlimages/curl --data-binary "@-"`) hoặc dùng test runner tự động giúp payload JSON được bảo toàn nguyên vẹn 100%. (Lưu ý cờ `@-` phải đặt trong dấu nháy kép `"@-"` trên PowerShell để không bị lỗi token).
 - **Lỗi tràn dung lượng ổ đĩa C trong quá trình Docker build (`There is not enough space on the disk`):** Ổ C máy host cạn kiệt dung lượng (chỉ còn ~100 MB free) khiến tiến trình biên dịch Go/BuildKit thất bại và ngắt kết nối daemon WSL2 (`unexpected EOF`).  
