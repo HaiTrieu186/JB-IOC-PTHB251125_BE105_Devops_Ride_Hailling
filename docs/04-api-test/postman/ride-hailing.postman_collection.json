@@ -5170,7 +5170,7 @@
       "name": "05 dispatch-service",
       "item": [
         {
-          "name": "Setup: Top-up ví C1 (100.000 VND)",
+          "name": "Setup: Top-up ví C1 (500.000 VND)",
           "request": {
             "method": "POST",
             "header": [
@@ -5189,7 +5189,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"amount\": 100000\n}",
+              "raw": "{\n  \"amount\": 500000\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5208,7 +5208,7 @@
                 "top-up"
               ]
             },
-            "description": "Nạp thêm 100.000 VND cho C1 để đảm bảo số dư đủ thanh toán cước chuyến P1 -> P2 (~69.000 VND hoặc cao hơn khi surge)."
+            "description": "Nạp thêm 500.000 VND cho C1 để đảm bảo số dư đủ thanh toán cước chuyến P1 -> P2 (~69.000 VND, lên ~112.000 VND khi surge 1.5, và các ca chạy tay cần nhiều chuyến)."
           },
           "event": [
             {

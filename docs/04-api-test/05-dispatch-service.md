@@ -51,9 +51,9 @@ $REDIS_PASSWORD = "redis_secret_pass"
 
 ## 3. CHUẨN BỊ VÀ DỌN DẸP
 
-1. **Nạp ví C1 đủ tiền cước** (cước P1 $\rightarrow$ P2 $\approx$ 69.000đ, khi surge có thể $\approx$ 100.000đ; W-01 chỉ nạp 50.000đ nên phải nạp thêm):
+1. **Nạp ví C1 đủ tiền cước** (cước P1 $\rightarrow$ P2 $\approx$ 69.000đ, lên $\approx$ 112.000đ khi surge 1.5, và các ca chạy tay cần nhiều chuyến; W-01 chỉ nạp 50.000đ nên phải nạp thêm):
    ```powershell
-   '{"amount":100000}' | curl.exe -s -X POST -H "Content-Type: application/json" -H "X-User-Id: $c1_id" -H "X-User-Role: CUSTOMER" --data-binary "@-" http://127.0.0.1:8005/api/v1/wallets/top-up
+   '{"amount":500000}' | curl.exe -s -X POST -H "Content-Type: application/json" -H "X-User-Id: $c1_id" -H "X-User-Role: CUSTOMER" --data-binary "@-" http://127.0.0.1:8005/api/v1/wallets/top-up
    ```
 
 2. **Bật tài xế D1 và D2 ONLINE**:
