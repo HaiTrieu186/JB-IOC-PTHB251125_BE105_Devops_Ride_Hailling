@@ -3,7 +3,6 @@ package impl
 import (
 	"context"
 	"log/slog"
-	"sort"
 	"strings"
 	"time"
 
@@ -76,7 +75,7 @@ func (s *tripCreateServiceImpl) CreateTrip(ctx context.Context, customerID uuid.
 	}
 
 	// 3. Lấy báo giá từ pricing-service
-	estimate, err := s.pricingClient.Estimate(ctx, req.PickupLat, req.PickupLng, req.DropoffLat, req.DropoffLng)
+	estimate, err := s.pricingClient.Estimate(ctx, *req.PickupLat, *req.PickupLng, *req.DropoffLat, *req.DropoffLng)
 	if err != nil {
 		return nil, err
 	}
@@ -91,16 +90,16 @@ func (s *tripCreateServiceImpl) CreateTrip(ctx context.Context, customerID uuid.
 	}
 
 	// 5. Tính Geohash độ dài 5 từ tọa độ đón
-	pickupGeohash5 := util.EncodeGeohash5(req.PickupLat, req.PickupLng)
+	pickupGeohash5 := util.EncodeGeohash5(*req.PickupLat, *req.PickupLng)
 
 	// 6. Giao dịch DB INSERT chuyến với status = MATCHING
 	trip := &entity.Trip{
 		CustomerID:      customerID,
-		PickupLat:       req.PickupLat,
-		PickupLng:       req.PickupLng,
+		PickupLat:       *req.PickupLat,
+		PickupLng:       *req.PickupLng,
 		PickupAddress:   strings.TrimSpace(req.PickupAddress),
-		DropoffLat:      req.DropoffLat,
-		DropoffLng:      req.DropoffLng,
+		DropoffLat:      *req.DropoffLat,
+		DropoffLng:      *req.DropoffLng,
 		DropoffAddress:  strings.TrimSpace(req.DropoffAddress),
 		Fare:            estimate.Fare,
 		DistanceM:       estimate.DistanceM,
@@ -124,49 +123,10 @@ func (s *tripCreateServiceImpl) CreateTrip(ctx context.Context, customerID uuid.
 	}
 
 	// 8. Tìm kiếm & Ghép tài xế
-	candidates, err := s.locationClient.GetCandidates(ctx, req.PickupLat, req.PickupLng, s.offerRadiusKM)
+	matchedCandidates, err := s.findMatchedCandidates(ctx, trip.ID, *req.PickupLat, *req.PickupLng)
 	if err != nil {
-		slog.Error("failed to get candidates from location-service", "trip_id", trip.ID, "error", err)
-		s.expireTripOnDependencyError(ctx, trip)
-		return nil, exception.NewServiceUnavailableError("location-service không phản hồi hoặc timeout", err)
-	}
-
-	var matchedCandidates []client.DriverCandidate
-	if len(candidates) > 0 {
-		driverIDs := make([]string, len(candidates))
-		for i, c := range candidates {
-			driverIDs[i] = c.DriverID
-		}
-
-		onlineIDs, err := s.userClient.FilterOnline(ctx, driverIDs)
-		if err != nil {
-			slog.Error("failed to filter online drivers from user-service", "trip_id", trip.ID, "error", err)
-			s.expireTripOnDependencyError(ctx, trip)
-			return nil, exception.NewServiceUnavailableError("user-service không phản hồi hoặc timeout", err)
-		}
-
-		if len(onlineIDs) > 0 {
-			onlineMap := make(map[string]bool, len(onlineIDs))
-			for _, id := range onlineIDs {
-				onlineMap[id] = true
-			}
-
-			for _, c := range candidates {
-				if onlineMap[c.DriverID] {
-					matchedCandidates = append(matchedCandidates, c)
-				}
-			}
-
-			// Sắp xếp tăng dần theo khoảng cách distance_m (Quyết định D)
-			sort.Slice(matchedCandidates, func(i, j int) bool {
-				return matchedCandidates[i].DistanceM < matchedCandidates[j].DistanceM
-			})
-
-			// Top-N: min(số tài xế online khớp, 5) (Quyết định A.3)
-			if len(matchedCandidates) > 5 {
-				matchedCandidates = matchedCandidates[:5]
-			}
-		}
+		s.expireTripNoDrivers(ctx, trip)
+		return nil, err
 	}
 
 	// 9. Phân nhánh kết quả
@@ -249,11 +209,15 @@ func (s *tripCreateServiceImpl) CreateTrip(ctx context.Context, customerID uuid.
 }
 
 func (s *tripCreateServiceImpl) expireTripNoDrivers(ctx context.Context, trip *entity.Trip) {
+	rowsAffected, err := s.tripRepo.ExpireTrip(ctx, trip.ID)
+	if err != nil || rowsAffected == 0 {
+		return
+	}
+
 	now := time.Now().UTC()
 	nowUTC := dto.FormatTimeUTC(now)
 	note := "NO_DRIVERS_AVAILABLE"
 
-	_, _ = s.tripRepo.ExpireTrip(ctx, trip.ID)
 	_ = s.timelineRepo.Create(ctx, &entity.StatusTimeline{
 		TripID:    trip.ID,
 		Status:    "EXPIRED",
@@ -268,54 +232,4 @@ func (s *tripCreateServiceImpl) expireTripNoDrivers(ctx context.Context, trip *e
 		Status:     "EXPIRED",
 		UpdatedAt:  nowUTC,
 	})
-}
-
-func (s *tripCreateServiceImpl) expireTripOnDependencyError(ctx context.Context, trip *entity.Trip) {
-	now := time.Now().UTC()
-	nowUTC := dto.FormatTimeUTC(now)
-	note := "NO_DRIVERS_AVAILABLE"
-
-	_, _ = s.tripRepo.ExpireTrip(ctx, trip.ID)
-	_ = s.timelineRepo.Create(ctx, &entity.StatusTimeline{
-		TripID:    trip.ID,
-		Status:    "EXPIRED",
-		Note:      &note,
-		CreatedAt: now,
-	})
-	_ = s.eventPublisher.PublishTripExpired(ctx, trip.ID.String(), note, nowUTC)
-	_ = s.eventPublisher.PublishTripUpdate(ctx, &dto.TripUpdateMessage{
-		TripID:     trip.ID.String(),
-		CustomerID: trip.CustomerID.String(),
-		DriverID:   nil,
-		Status:     "EXPIRED",
-		UpdatedAt:  nowUTC,
-	})
-}
-
-func validateCoordinates(req *dto.CreateTripRequest) error {
-	// Dải chuẩn LLD-00 Mục 4: vĩ độ [-85.05112878, 85.05112878], kinh độ [-180, 180]
-	const minLat = -85.05112878
-	const maxLat = 85.05112878
-	const minLng = -180.0
-	const maxLng = 180.0
-
-	if req.PickupLat < minLat || req.PickupLat > maxLat || req.PickupLng < minLng || req.PickupLng > maxLng {
-		return exception.NewValidationError("Tọa độ điểm đón không hợp lệ")
-	}
-	if req.DropoffLat < minLat || req.DropoffLat > maxLat || req.DropoffLng < minLng || req.DropoffLng > maxLng {
-		return exception.NewValidationError("Tọa độ điểm trả không hợp lệ")
-	}
-
-	if req.PickupLat == req.DropoffLat && req.PickupLng == req.DropoffLng {
-		return exception.NewValidationError("Điểm đón và điểm trả không được trùng nhau")
-	}
-
-	if strings.TrimSpace(req.PickupAddress) == "" {
-		return exception.NewValidationError("Địa chỉ đón không được để trống")
-	}
-	if strings.TrimSpace(req.DropoffAddress) == "" {
-		return exception.NewValidationError("Địa chỉ trả không được để trống")
-	}
-
-	return nil
 }

@@ -7,12 +7,12 @@ import (
 )
 
 type CreateTripRequest struct {
-	PickupLat      float64 `json:"pickup_lat"`
-	PickupLng      float64 `json:"pickup_lng"`
-	PickupAddress  string  `json:"pickup_address"`
-	DropoffLat     float64 `json:"dropoff_lat"`
-	DropoffLng     float64 `json:"dropoff_lng"`
-	DropoffAddress string  `json:"dropoff_address"`
+	PickupLat      *float64 `json:"pickup_lat"`
+	PickupLng      *float64 `json:"pickup_lng"`
+	PickupAddress  string   `json:"pickup_address"`
+	DropoffLat     *float64 `json:"dropoff_lat"`
+	DropoffLng     *float64 `json:"dropoff_lng"`
+	DropoffAddress string   `json:"dropoff_address"`
 }
 
 type CreateTripResponse struct {

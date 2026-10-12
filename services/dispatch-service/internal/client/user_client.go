@@ -121,6 +121,9 @@ type updateStatusEnvelope struct {
 }
 
 func (c *userClientImpl) UpdateDriverStatus(ctx context.Context, driverID string, fromStatus, toStatus string) error {
+	reqCtx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+
 	payload, err := json.Marshal(updateStatusRequest{
 		FromStatus: fromStatus,
 		ToStatus:   toStatus,
@@ -130,7 +133,7 @@ func (c *userClientImpl) UpdateDriverStatus(ctx context.Context, driverID string
 	}
 
 	url := fmt.Sprintf("%s/internal/v1/drivers/%s/status", c.baseURL, driverID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, url, bytes.NewReader(payload))
 	if err != nil {
 		return exception.NewServiceUnavailableError("Lỗi khởi tạo request đổi trạng thái tài xế", err)
 	}

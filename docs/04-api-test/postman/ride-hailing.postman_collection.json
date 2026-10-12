@@ -5170,6 +5170,210 @@
       "name": "05 dispatch-service",
       "item": [
         {
+          "name": "Setup: Top-up ví C1 (100.000 VND)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{c1_id}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "CUSTOMER"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 100000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{payment_url}}/api/v1/wallets/top-up",
+              "host": [
+                "{{payment_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wallets",
+                "top-up"
+              ]
+            },
+            "description": "Nạp thêm 100.000 VND cho C1 để đảm bảo số dư đủ thanh toán cước chuyến P1 -> P2 (~69.000 VND hoặc cao hơn khi surge)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Top-up C1 status 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup: Bật tài xế D1 ONLINE",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{d1_id}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "DRIVER"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"ONLINE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{user_url}}/api/v1/driver/status",
+              "host": [
+                "{{user_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "driver",
+                "status"
+              ]
+            },
+            "description": "Chuyển trạng thái tài xế D1 sang ONLINE sẵn sàng nhận cuốc."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Driver D1 status ONLINE 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup: Record GPS D1 (gần P1)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"driver_id\": \"{{d1_id}}\",\n  \"latitude\": 10.7738,\n  \"longitude\": 106.6992\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{location_url}}/internal/v1/locations/record",
+              "host": [
+                "{{location_url}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "locations",
+                "record"
+              ]
+            },
+            "description": "Cập nhật tọa độ D1 gần điểm đón P1. LƯU Ý: GPS trong Redis có TTL 15 giây, nên request này chỉ đủ cho DP-01a; các ca sau (nhất là DP-06 chờ 30 giây) cần vòng lặp PowerShell gửi GPS nền."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Record GPS D1 status 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Setup: Record GPS D2 (gần P1)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"driver_id\": \"{{d2_id}}\",\n  \"latitude\": 10.7775,\n  \"longitude\": 106.7032\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{location_url}}/internal/v1/locations/record",
+              "host": [
+                "{{location_url}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "locations",
+                "record"
+              ]
+            },
+            "description": "Cập nhật tọa độ D2 gần điểm đón P1. LƯU Ý: GPS trong Redis có TTL 15 giây, nên request này chỉ đủ cho DP-01a; các ca sau cần vòng lặp PowerShell gửi GPS nền."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Record GPS D2 status 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "DP-00 Healthcheck",
           "request": {
             "method": "GET",
