@@ -6143,6 +6143,709 @@
           ]
         }
       ]
+    },
+    {
+      "name": "06 api-gateway",
+      "item": [
+        {
+          "name": "06.01 Dang nhap C1 qua Gateway (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Login success with access token\", function () {",
+                  "    pm.expect(res.success).to.be.true;",
+                  "    pm.expect(res.data.access_token).to.be.a('string');",
+                  "    pm.collectionVariables.set(\"gw_c1_token\", res.data.access_token);",
+                  "    pm.collectionVariables.set(\"gw_c1_refresh\", res.data.refresh_token);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone_or_email\": \"0901000001\",\n  \"password\": \"{{default_password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api/v1/auth/login",
+              "host": [
+                "{{gateway_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "06.02 Luong thanh cong: D1 bat ONLINE (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Driver status is ONLINE\", function () {",
+                  "    pm.expect(res.success).to.be.true;",
+                  "    pm.expect(res.data.status).to.eql(\"ONLINE\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{d1_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"ONLINE\"\n}"
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api/v1/driver/status",
+              "host": [
+                "{{gateway_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "driver",
+                "status"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "06.03 Luong thanh cong: Uoc tinh cuoc P1-P2 (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Estimate returned total_fare\", function () {",
+                  "    pm.expect(res.success).to.be.true;",
+                  "    pm.expect(res.data.total_fare).to.be.above(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{gw_c1_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pickup_lat\": 10.7725,\n  \"pickup_lng\": 106.6980,\n  \"dropoff_lat\": 10.7951,\n  \"dropoff_lng\": 106.7218\n}"
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api/v1/pricing/estimate",
+              "host": [
+                "{{gateway_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "pricing",
+                "estimate"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "06.04 Luong thanh cong: Tra cuu vi C1 (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Wallet balance exists\", function () {",
+                  "    pm.expect(res.success).to.be.true;",
+                  "    pm.expect(res.data.balance).to.be.a('number');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{gw_c1_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway_url}}/api/v1/wallets/me",
+              "host": [
+                "{{gateway_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wallets",
+                "me"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "06.05 Luong thanh cong: Admin xem cau hinh gia (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Pricing config returned\", function () {",
+                  "    pm.expect(res.success).to.be.true;",
+                  "    pm.expect(res.data.base_fare).to.be.above(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway_url}}/api/v1/admin/pricing/config",
+              "host": [
+                "{{gateway_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "pricing",
+                "config"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "06.06 Admin RBAC 403: Customer truy cap endpoint Admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 403 Forbidden\", function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Error code is FORBIDDEN\", function () {",
+                  "    pm.expect(res.success).to.be.false;",
+                  "    pm.expect(res.error.code).to.eql(\"FORBIDDEN\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{gw_c1_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway_url}}/api/v1/admin/pricing/config",
+              "host": [
+                "{{gateway_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "pricing",
+                "config"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "06.07 Thieu Token 401: Endpoint can xac thuc",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 401 Unauthorized\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Error code is UNAUTHORIZED\", function () {",
+                  "    pm.expect(res.success).to.be.false;",
+                  "    pm.expect(res.error.code).to.eql(\"UNAUTHORIZED\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway_url}}/api/v1/wallets/me",
+              "host": [
+                "{{gateway_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wallets",
+                "me"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "06.08 Token alg none 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 401 Unauthorized\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Error code is UNAUTHORIZED\", function () {",
+                  "    pm.expect(res.success).to.be.false;",
+                  "    pm.expect(res.error.code).to.eql(\"UNAUTHORIZED\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer eyJhbGciOiAibm9uZSIsICJ0eXAiOiAiSldUIn0.eyJ1c2VyX2lkIjogIjdlMzJlZTI0LTkxMGQtNGVjZS04ZTNjLTQ5MTZjOGJkYTM3OCIsICJyb2xlIjogIkNVU1RPTUVSIiwgImV4cCI6IDE5OTE3ODk0MTIsICJqdGkiOiAianRpLW5vbmUtMTIzIn0."
+              }
+            ],
+            "url": {
+              "raw": "{{gateway_url}}/api/v1/wallets/me",
+              "host": [
+                "{{gateway_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wallets",
+                "me"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "06.09 Header X-User-Id gia khong token 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 401 Unauthorized\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Error code is UNAUTHORIZED\", function () {",
+                  "    pm.expect(res.success).to.be.false;",
+                  "    pm.expect(res.error.code).to.eql(\"UNAUTHORIZED\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "00000000-0000-0000-0000-000000000000"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "ADMIN"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway_url}}/api/v1/wallets/me",
+              "host": [
+                "{{gateway_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wallets",
+                "me"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "06.10 Header X-User-Id gia kem token C1 (Sanitize)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Sanitized headers returned real C1 wallet\", function () {",
+                  "    pm.expect(res.success).to.be.true;",
+                  "    pm.expect(res.data.wallet_id).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "00000000-0000-0000-0000-000000000000"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "ADMIN"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{gw_c1_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway_url}}/api/v1/wallets/me",
+              "host": [
+                "{{gateway_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wallets",
+                "me"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "06.11 Chan API noi bo 404: /internal/* khong token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 404 Not Found\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Error code is NOT_FOUND\", function () {",
+                  "    pm.expect(res.success).to.be.false;",
+                  "    pm.expect(res.error.code).to.eql(\"NOT_FOUND\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"driver_ids\": []\n}"
+            },
+            "url": {
+              "raw": "{{gateway_url}}/internal/v1/users/filter-online",
+              "host": [
+                "{{gateway_url}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "users",
+                "filter-online"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "06.12 Chan API noi bo 404: /internal/* kem token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 404 Not Found\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Error code is NOT_FOUND\", function () {",
+                  "    pm.expect(res.success).to.be.false;",
+                  "    pm.expect(res.error.code).to.eql(\"NOT_FOUND\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{gw_c1_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"driver_ids\": []\n}"
+            },
+            "url": {
+              "raw": "{{gateway_url}}/internal/v1/users/filter-online",
+              "host": [
+                "{{gateway_url}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "users",
+                "filter-online"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "06.13 Route la 404: Duong dan khong ton tai",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 404 Not Found\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Error code is NOT_FOUND\", function () {",
+                  "    pm.expect(res.success).to.be.false;",
+                  "    pm.expect(res.error.code).to.eql(\"NOT_FOUND\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway_url}}/api/v1/nonexistent-route-xyz",
+              "host": [
+                "{{gateway_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "nonexistent-route-xyz"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "06.14 Method sai 404: GET /api/v1/trips",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 404 Not Found\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Error code is NOT_FOUND\", function () {",
+                  "    pm.expect(res.success).to.be.false;",
+                  "    pm.expect(res.error.code).to.eql(\"NOT_FOUND\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway_url}}/api/v1/trips",
+              "host": [
+                "{{gateway_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "trips"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "06.15 Dang xuat va dung lai access token 401",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.sendRequest({",
+                  "    url: pm.variables.get(\"gateway_url\") + \"/api/v1/auth/logout\",",
+                  "    method: \"POST\",",
+                  "    header: {",
+                  "        \"Content-Type\": \"application/json\",",
+                  "        \"Authorization\": \"Bearer \" + pm.variables.get(\"c2_token\")",
+                  "    },",
+                  "    body: {",
+                  "        mode: \"raw\",",
+                  "        raw: JSON.stringify({ refresh_token: pm.variables.get(\"c2_refresh\") })",
+                  "    }",
+                  "}, function (err, res) {",
+                  "    // Logout executed before main request",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 401 Unauthorized\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "var res = pm.response.json();",
+                  "pm.test(\"Error code is UNAUTHORIZED after logout\", function () {",
+                  "    pm.expect(res.success).to.be.false;",
+                  "    pm.expect(res.error.code).to.eql(\"UNAUTHORIZED\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{c2_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway_url}}/api/v1/wallets/me",
+              "host": [
+                "{{gateway_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wallets",
+                "me"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
     }
   ]
 }

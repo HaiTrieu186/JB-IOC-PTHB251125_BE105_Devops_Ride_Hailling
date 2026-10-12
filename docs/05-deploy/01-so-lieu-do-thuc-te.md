@@ -142,7 +142,35 @@
 
 ---
 
-## 7. Nhật ký gỡ lỗi (Debugging Log)
+## 7. Triển khai `api-gateway` (Lượt 8)
+
+Đo kiểm sau khi chạy toàn bộ chuỗi kiểm thử nghiệp vụ (luồng demo end-to-end qua cổng 8080 C1 + D1 đăng nhập -> nạp tiền ví C1 -> D1 online -> estimate -> create trip -> accept -> picking-up -> start-trip -> complete -> tra cứu ví C1/D1, kiểm tra header spoofing sanitize, từ chối token alg none / sai secret / hết hạn, chặn API nội bộ /internal/* và method sai về 404, kiểm tra RBAC Admin 403, kiểm tra passthrough lỗi dispatch 403, kiểm tra 503 khi service đích hoặc Redis sập fail-closed, chạy 2 lượt Newman 0 failed).  
+*Ghi chú môi trường:* Số đo thực tế dưới đây được lấy từ Docker Desktop trên máy dev nội bộ sau khi hoàn thành 2 lượt chạy full test suite Postman (48/48 assertions PASS).
+
+### Kết quả `docker stats --no-stream`
+
+| Container | CPU % | RAM Hiện tại (MEM USAGE) | Giới hạn (LIMIT) | Tỷ lệ RAM (MEM %) | NET I/O | BLOCK I/O | PIDs | Trạng thái |
+|---|---|---|---|---|---|---|---|---|
+| `api-gateway` | 0.06% | 4.30 MiB | 25 MiB | 17.19% | 75 kB / 65.4 kB | 0 B / 0 B | 8 | Healthy |
+| `dispatch-service` | 0.02% | 7.22 MiB | 30 MiB | 24.08% | 56.6 kB / 96.2 kB | 2.76 MB / 0 B | 12 | Healthy |
+| `pricing-service` | 0.04% | 5.29 MiB | 30 MiB | 17.64% | 14.6 kB / 19.7 kB | 0 B / 0 B | 8 | Healthy |
+| `payment-service` | 0.04% | 6.60 MiB | 30 MiB | 21.99% | 62.5 kB / 84.9 kB | 1.46 MB / 0 B | 13 | Healthy |
+| `location-service` | 0.02% | 3.54 MiB | 25 MiB | 14.16% | 13.1 kB / 10.8 kB | 0 B / 0 B | 8 | Healthy |
+| `user-service` | 0.01% | 7.13 MiB | 30 MiB | 23.75% | 48.9 kB / 63.5 kB | 3.9 MB / 0 B | 14 | Healthy |
+| `postgres` | 0.10% | 55.80 MiB | 200 MiB | 27.90% | 135 kB / 73.6 kB | 27.7 MB / 122 MB | 10 | Healthy |
+| `redis` | 0.36% | 4.73 MiB | 60 MiB | 7.88% | 13 kB / 8.15 kB | 16.4 kB / 0 B | 6 | Healthy |
+| **Tổng cộng** | - | **94.61 MiB** | **430 MiB** | - | - | - | 79 | - |
+
+### Đánh giá & Khuyến nghị giới hạn tài nguyên
+
+- **Đánh giá `mem_limit` hiện tại (25 MB):** `api-gateway` tiêu thụ ~4.30 MiB RAM (~17.2% định mức 25 MB). Do Gateway không có DB quan hệ và không có background worker nặng, mức RAM cực kỳ gọn nhẹ và ổn định. Định mức `mem_limit: 25m` và `GOMEMLIMIT: 22MiB` hoàn toàn đủ và tối ưu cho VPS 1 GB.
+- **Xác minh bảo mật & Header Sanitization:** Sanitize middleware xóa sạch toàn bộ header giả mạo `X-User-*` client gửi lên, chỉ gán lại danh tính sau khi giải mã JWT hợp lệ.
+- **Xác minh Fail-Closed:** Khi Redis gặp sự cố, Gateway ngắt truy cập ngay lập tức với HTTP 503 `SERVICE_UNAVAILABLE` thay vì cho qua, bảo đảm an toàn dữ liệu phiên đăng nhập.
+- **Ngân sách RAM toàn hệ thống:** 94.61 MiB / 850 MiB (~11.1% ngân sách tối đa của VPS 1 GB).
+
+---
+
+## 8. Nhật ký gỡ lỗi (Debugging Log)
 
 - **Lỗi escape ký tự JSON trong PowerShell khi gọi `curlimages/curl`:** Khi chạy câu lệnh PowerShell với cờ `-d '{...}'`, PowerShell tự động bóc tách dấu nháy kép khiến parser JSON của Go nhận payload bị lỗi cú pháp `VALIDATION_ERROR`.  
   *Cách khắc phục:* Chuyển sang kỹ thuật truyền dữ liệu qua stdin (`<json> | docker run -i ... curlimages/curl --data-binary "@-"`) hoặc dùng test runner tự động giúp payload JSON được bảo toàn nguyên vẹn 100%. (Lưu ý cờ `@-` phải đặt trong dấu nháy kép `"@-"` trên PowerShell để không bị lỗi token).
@@ -153,4 +181,6 @@
 - **Xử lý số lần giao lại trong Redis Stream PEL (`payment-service` & `pricing-service`):** Lệnh `XREADGROUP ... 0` đọc lại tin nhắn từ PEL không tự động tăng `DeliveredTimes` trên Redis. Do đó, consumer sử dụng `map[string]int` có mutex lock để tự theo dõi: lần đầu thấy tin trong PEL tính là lần giao thứ 2. Nếu vượt quá `MAX_DELIVERY_ATTEMPTS` (5 lần), hệ thống ghi log `ERROR` và `XACK` giải phóng tin nhắn để không tắc nghẽn đường ống.
 - **Lỗi Unused variable & Unused import trong Go vet (dispatch-service):** Trong quá trình triển khai, biến `appErr` và import `fmt` trong một số file impl không sử dụng trực tiếp dẫn tới compiler error.  
   *Cách khắc phục:* Làm sạch toàn bộ biến cục bộ và import thừa trước khi build, đảm bảo `go vet ./...` đạt exit code 0 tuyệt đối.
+- **Xử lý thứ tự định tuyến Fiber tránh nhầm lẫn route động (api-gateway):** Trong Fiber, đăng ký `GET /api/v1/trips/current` bắt buộc phải đứng TRƯỚC `GET /api/v1/trips/:id` để tránh router hiểu nhầm chữ `current` là tham số path `:id`.
+- **Xử lý ép mã lỗi method sai về 404 (api-gateway):** ErrorHandler của `api-gateway` ép tất cả mã 405 Method Not Allowed về 404 `NOT_FOUND` kèm envelope JSON chuẩn, đáp ứng đúng quy định kiểm thử và thiết kế LLD.
 
