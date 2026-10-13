@@ -3,6 +3,7 @@ package impl
 import (
 	"context"
 	"log/slog"
+	"regexp"
 	"strings"
 	"time"
 
@@ -16,6 +17,8 @@ import (
 
 	"github.com/google/uuid"
 )
+
+var phoneRegex = regexp.MustCompile(`^0[0-9]{9}$`)
 
 type authServiceImpl struct {
 	userRepo    repository.UserRepository
@@ -45,6 +48,9 @@ func (s *authServiceImpl) Register(ctx context.Context, req *dto.RegisterRequest
 
 	if req.PhoneNumber == "" {
 		return nil, exception.NewValidationError("Số điện thoại không được để trống")
+	}
+	if !phoneRegex.MatchString(req.PhoneNumber) {
+		return nil, exception.NewValidationError("Số điện thoại phải gồm 10 chữ số và bắt đầu bằng 0")
 	}
 	if req.FullName == "" {
 		return nil, exception.NewValidationError("Họ và tên không được để trống")

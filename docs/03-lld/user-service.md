@@ -85,6 +85,7 @@
 
 ### 4.1. Đăng ký & Đăng nhập (UC-01, UC-02)
 - **Đăng ký:** Validate dữ liệu $\rightarrow$ Kiểm tra trùng lặp `phone_number` / `email` trong `users` (nếu có $\rightarrow$ `USER_ALREADY_EXISTS` 409) $\rightarrow$ Băm mật khẩu bằng `bcrypt.GenerateFromPassword(pwd, 10)` $\rightarrow$ INSERT `users` (`role = CUSTOMER` thì `driver_status = NULL`; `role = DRIVER` thì `driver_status = 'OFFLINE'`). Trả về 201 Created.
+  - Validate đăng ký: phone_number khớp ^0[0-9]{9}$, sai => VALIDATION_ERROR 400.
 - **Đăng nhập:** Tra cứu người dùng theo `phone_number` hoặc `email` $\rightarrow$ So khớp `bcrypt.CompareHashAndPassword` (thất bại $\rightarrow$ `UNAUTHORIZED` 401) $\rightarrow$ Sinh JWT Access Token (claims: `user_id`, `role`, `exp = now + ACCESS_TOKEN_EXPIRY`, `jti = uuid()`) $\rightarrow$ Sinh Refresh Token ngẫu nhiên (opaque UUID) $\rightarrow$ Lưu Redis: `SET refresh:<token> <user_id> EX 604800` (7 ngày). Trả về 200 OK kèm cặp token và `expires_in` (đọc từ biến ENV `ACCESS_TOKEN_EXPIRY`, mặc định 3600).
 
 ### 4.2. Xoay vòng Refresh Token nguyên tử (UC-08)
